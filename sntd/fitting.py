@@ -7,12 +7,12 @@ from astropy.table import Table
 from astropy.extern import six
 import nestle
 
+from .util import __dir__
 from .util import *
 from .spl import spl
 from .plotting import display
-import models
+from . import models
 __all__=['fit_data','colorFit','spline_fit']
-
 __thetaSN__=['z','hostebv','screenebv','screenz','rise','fall']
 __thetaL__=['t0','amplitude','dt0','A','B']
 
@@ -381,7 +381,7 @@ def _fitSeparate(curves,mods,args,bounds):
         #print(curves.images[d].simMeta)
         args['curve']=curves.images[d]
         curves.images[d].fits=newDict()
-        if len(args['curve'].table)>63 or len(mods)==1 or curves['snType']=='Ia':
+        if len(args['curve'].table)>63 or len(mods)==1 or args['snType']=='Ia':
             fits=[]
             for mod in mods:
                 if mod=='SplineSource':
@@ -729,13 +729,13 @@ def bazin_fit(args):
     return({'res':res,'model':fit})
 
 def spline_fit(args):
-    source=models.SplineSource(args['curve'].table,knots=args['knots'],func=args['func'],degree=args['degree'])
+    source=models.SplineSource(args['table'],knots=args['knots'],func=args['func'],degree=args['degree'])
     mod=sncosmo.Model(source)
 
     if args['constants']:
         mod.set(**args['constants'])
     mod.set(t0=0)
-    res,fit=sncosmo.fit_lc(args['curve'].table,mod,['dt0','amplitude'],bounds=args['bounds'],guess_amplitude=False,guess_t0=False,maxcall=50)
+    res,fit=sncosmo.fit_lc(args['table'],mod,['dt0','amplitude'],bounds=args['bounds'],guess_amplitude=False,guess_t0=False,maxcall=50)
     return({'res':res,'model':fit})
 
 '''

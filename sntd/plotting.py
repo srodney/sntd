@@ -1,6 +1,8 @@
-import sys,math
+import os
+import math
 import matplotlib.pyplot as plt
 import numpy as np
+from . import util
 
 def plotObject(lcs,bands='all',showfig=False,savefig=True,filename='mySN'):
 
@@ -10,7 +12,7 @@ def plotObject(lcs,bands='all',showfig=False,savefig=True,filename='mySN'):
     nrows=int(math.ceil(len(lcs.bands)/2.))
     fig,ax=plt.subplots(nrows=nrows,ncols=2,sharex=True,sharey=False)
     leg=[]
-    for lc in np.sort(lcs.images.keys()):
+    for lc in np.sort(list(lcs.images.keys())):
         #print(lcs.images[lc].simMeta)
         row=0
         col=0
@@ -46,7 +48,7 @@ def plotObject(lcs,bands='all',showfig=False,savefig=True,filename='mySN'):
     if not len(lcs.bands)%2==0:
         fig.delaxes(ax[nrows-1][1])
         ax[nrows-2][1].tick_params(axis='x',labelbottom='on',bottom='on')
-        plt.figlegend(leg,np.sort(lcs.images.keys()),loc='lower right',fontsize=16)
+        plt.figlegend(leg,np.sort(list(lcs.images.keys())),loc='lower right',fontsize=16)
 
     fig.text(0.5, 0.02, r'Time (MJD)', ha='center',fontsize=16)
     fig.text(0.04, .5, 'Flux', va='center', rotation='vertical',fontsize=16)
@@ -278,7 +280,7 @@ def display(lclist=[], splist=[],
         raise RuntimeError("I do not know the style %s" % (style))
 
     if not (isinstance(lclist, list) or isinstance(lclist, tuple)):
-        raise TypeError, "Hey, give me a LIST of lightcurves !"
+        raise TypeError("Hey, give me a LIST of lightcurves !")
 
     if colourprop != None:
         (colourpropname, colournicename, colourminval, colourmaxval) = colourprop
@@ -300,7 +302,7 @@ def display(lclist=[], splist=[],
         ihaveax = True
         axes = ax
 
-    if verbose: print "Plotting %i lightcurves and %i splines ..." % (len(lclist), len(splist))
+    if verbose: print(("Plotting %i lightcurves and %i splines ..." % (len(lclist), len(splist))))
 
     reflevels = []  # only used for collapseref
 
@@ -313,7 +315,7 @@ def display(lclist=[], splist=[],
                 curveseasons = curve[1]
 
                 if not isinstance(curveseasons, list):
-                    raise TypeError, "lc.display wants LISTs of seasons, not individual seasons !"
+                    raise TypeError("lc.display wants LISTs of seasons, not individual seasons !")
                 for curveseason in curveseasons:
                     # the x lims :
                     (x1, x2) = curveseason.getjdlims(actualcurve)
@@ -329,7 +331,7 @@ def display(lclist=[], splist=[],
 
                 curve = curve[0]  # for the rest of this loop, curve is now only the lightcurve.
 
-            if verbose: print "#   %s -> %s\n\t%s" % (curve, str(curve.plotcolour), "\n\t".join(curve.commentlist))
+            if verbose: print("#   %s -> %s\n\t%s" % (curve, str(curve.plotcolour), "\n\t".join(curve.commentlist)))
             # if verbose and (curve.ml != None):
             #	print curve.ml.longinfo()
 
@@ -410,7 +412,7 @@ def display(lclist=[], splist=[],
                                       size=12, color=curve.plotcolour)
 
     if collapseref and len(reflevels) != 0:
-        print "WARNING : collapsing the refs %s" % (reflevels)
+        print("WARNING : collapsing the refs %s" % (reflevels))
         axes.axhline(np.mean(np.array(reflevels)), color="gray", dashes=((3, 3)))  # the new ref
 
     # The supplementary objects
@@ -421,7 +423,7 @@ def display(lclist=[], splist=[],
             # to import spline and gpr etc.
             if hasattr(stuff, "knottype"):  # Then it's a spline
                 spline = stuff
-                if verbose: print "#   %s -> %s" % (str(spline), str(spline.plotcolour))
+                if verbose: print("#   %s -> %s" % (str(spline), str(spline.plotcolour)))
 
                 npts = (spline.datapoints.jds[-1] - spline.datapoints.jds[0]) * 2.0
                 xs = np.linspace(spline.datapoints.jds[0], spline.datapoints.jds[-1], npts)
@@ -504,7 +506,10 @@ def display(lclist=[], splist=[],
     axes.set_ylabel("AB Magnitude", fontsize=labelfontsize)
 
     if showdelays:
-        txt = getnicetimedelays(lclist, separator="\n")
+        # TODO: replace pycs getnicetimedelays dependency.
+        # This is calling a pycs function to make a time delay text string.
+        #txt = getnicetimedelays(lclist, separator="\n")
+        txt='<pycs getnicetimedelays not implemented>'
         axes.annotate(txt, xy=(0.0, 1.0), xycoords='axes fraction', xytext=(6, -6),
                       textcoords='offset points', ha='left', va='top')
         # plt.text(0.01, 0.99, txt,
@@ -512,8 +517,8 @@ def display(lclist=[], splist=[],
         #	transform = axes.transAxes)
         legendloc = 1
         if verbose:
-            print "Delays between plotted curves :"
-            print txt
+            print("Delays between plotted curves :")
+            print(txt)
     '''
     #micro
     if showlegend and (len(lclist) > 0 or len(splist) > 0):
@@ -695,7 +700,7 @@ def display(lclist=[], splist=[],
 
         plt.savefig(filename, transparent=transparent,format='pdf')
         # if verbose:
-        print "Plot written to %s" % filename
+        print("Plot written to %s" % filename)
         #plt.show()  # this seems important so that the plot is not displayed when a next plt.show() is called.
         plt.clf()
 

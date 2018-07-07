@@ -14,7 +14,9 @@ NORMAL = 0    # use python zip libraries
 PROCESS = 1   # use (zcat, gzip) or (bzcat, bzip2)
 PARALLEL = 2  # (pigz -dc, pigz) or (pbzip2 -dc, pbzip2)
 
-__all__=['flux_to_mag','_cast_str','_get_default_prop_name','_isfloat','anyOpen','_props','_findMax','_findMin','colorFit']
+__all__=['flux_to_mag','_cast_str','_get_default_prop_name','_isfloat',
+         'anyOpen','_props','_findMax','_findMin','colorFit',
+         '_guess_time_delays', '_guess_magnifications']
 _props=odict([
     ('time',{'mjd', 'mjdobs', 'jd', 'time', 'date', 'mjd_obs','mhjd','jds'}),
     ('band',{'filter', 'band', 'flt', 'bandpass'}),
@@ -147,40 +149,35 @@ def _guess_time_delays(curves):
 
 def _findMax(time,curve):
     #TODO check edge cases
-    t0=np.where(curve==np.max(curve))[0][0]
-    if t0==0:
-        #return(time[0])
-        return (None,None)
-
-    elif t0==len(time)-1:
-
-        #return(time[-1])
-        return (None,None)
-
+    imax=np.where(curve==np.max(curve))[0][0]
+    if imax==0:
+        return(time[0], curve[0])
+        # return (None,None)
+    elif imax==len(time)-1:
+        return(time[-1], curve[-1])
+        # return (None,None)
     else:
-        fit=splrep(time[t0-1:t0+2],curve[t0-1:t0+2],k=2)
+        fit=splrep(time[imax-1:imax+2],curve[imax-1:imax+2],k=2)
 
-    interptime=np.linspace(time[t0-1],time[t0+1],100)
+    interptime=np.linspace(time[imax-1],time[imax+1],100)
     flux=splev(interptime,fit)
     return(interptime[flux==np.max(flux)],np.max(flux))
 
 
 def _findMin(time,curve):
     #TODO check edge cases
-    t0=np.where(curve==np.min(curve))[0][0]
+    imin=np.where(curve==np.min(curve))[0][0]
 
-    if t0==0:
-        #return(time[0])
-        return (None,None)
-
-    elif t0==len(time)-1:
-        #return(time[-1])
-        return (None,None)
-
+    if imin==0:
+        return(time[0], curve[0])
+        #return (None,None)
+    elif imin==len(time)-1:
+        return(time[-1], curve[-1])
+        #return (None,None)
     else:
-        fit=splrep(time[t0-1:t0+2],curve[t0-1:t0+2],k=2)
+        fit=splrep(time[imin-1:imin+2],curve[imin-1:imin+2],k=2)
 
-    interptime=np.linspace(time[t0-1],time[t0+1],100)
+    interptime=np.linspace(time[imin-1],time[imin+1],100)
     flux=splev(interptime,fit)
     return(interptime[flux==np.min(flux)],np.max(flux))
 

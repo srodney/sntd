@@ -14,6 +14,7 @@ from copy import deepcopy
 import matplotlib.pyplot as plt
 
 from .util import *
+
 #from.util import _get_default_prop_name
 
 __all__=['curve','curveDict','read_data','write_data','table_factory','factory']
@@ -95,7 +96,7 @@ class curveDict(dict):
         print('Metadata:')
         print('\n'.join('{}:{}'.format(*t) for t in zip(self.meta.keys(),self.meta.values())))
         print('')
-        for c in np.sort(self.images.keys()):
+        for c in np.sort(list(self.images.keys())):
             print('------------------')
             print('Image: %s:'%c)
             print('Bands: {}'.format(self.images[c].bands))
@@ -142,7 +143,7 @@ class curveDict(dict):
         #print(tds)
         #print(mus)
         self.combined.table=Table(names=self.table.colnames,dtype=[self.table.dtype[x] for x in self.table.colnames])
-        for k in np.sort(self.images.keys()):
+        for k in np.sort(list(self.images.keys())):
             #print('True mu:'+str(self.images[k].simMeta['mu']/self.images['S3'].simMeta['mu']))
             #print('True td: '+str(self.images[k].simMeta['td']-self.images['S3'].simMeta['td']))
             temp=deepcopy(self.images[k].table)
@@ -190,7 +191,7 @@ class curveDict(dict):
         if nbands==1:
             axlist = [axlist]
         leg=[]
-        for lc in np.sort(self.images.keys()):
+        for lc in np.sort(list(self.images.keys())):
             for b, ax in zip(bands, axlist):
                 if b==list(bands)[0]:
                     leg.append(
@@ -236,7 +237,7 @@ class curveDict(dict):
         #if not len(self.bands)%2==0:
             #fig.delaxes(ax[nrows-1][1])
             #axlist[nrows-2][1].tick_params(axis='x',labelbottom='on',bottom='on')
-        plt.figlegend(leg,np.sort(self.images.keys()), frameon=False,
+        plt.figlegend(leg,np.sort(list(self.images.keys())), frameon=False,
                       loc='center right', fontsize='medium', numpoints=1)
 
         fig.text(0.5, 0.02, r'Observer-frame time (days)', ha='center',
@@ -811,7 +812,8 @@ def _read_data(filename,telescopename,object,**kwargs):
                     if (pos == -1 or not any([_isfloat(x) for x in line.split()])):
                         if line[-1] not in string.punctuation:
                             line=line+'.'
-                        myCurve.meta['info']=curves.meta['info']+' '+ line[1:]
+                        #myCurve.meta['info']=curves.meta['info']+' '+ line[1:]
+                        myCurve.meta['info']=myCurve.meta['info']+' '+ line[1:]
                     else:
                         myCurve.meta[line[1:pos]] = _cast_str(line[pos:])
                 continue
