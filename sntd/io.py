@@ -3,9 +3,9 @@ import string
 from collections import OrderedDict as odict
 
 import numpy as np
-import os,sys,math
+import os
 import pycs
-import sncosmo,sntd
+import sncosmo
 from astropy.table import Table,vstack,Column
 from pycs.gen.lc import lightcurve
 from scipy.stats import mode

@@ -1,16 +1,16 @@
-import inspect,sncosmo,os,sys,warnings,pyParz,pycs
+import inspect,sncosmo,os,sys,warnings,pyParz
 import numpy as np
 import matplotlib.pyplot as plt
 from copy import deepcopy,copy
-from scipy.interpolate import splrep,splev
-from astropy.table import Table
+#from scipy.interpolate import splrep,splev
+#from astropy.table import Table
 from astropy.extern import six
 import nestle
 
 from .util import __dir__
 from .util import *
-from .spl import spl
-from .plotting import display
+#from .spl import spl
+#from .plotting import display
 from . import models
 __all__=['fit_data','colorFit','spline_fit']
 __thetaSN__=['z','hostebv','screenebv','screenz','rise','fall']
@@ -143,15 +143,21 @@ def fit_data(curves, snType='Ia',bands=None,method='minuit', models=None, params
     args['degree']=kwargs.get('degree',3)
     args['snType']=snType
     if not models:
-        mod,types=np.loadtxt(os.path.join(__dir__,'data','sncosmo','models.ref'),dtype='str',unpack=True)
-        modDict={mod[i]:types[i] for i in range(len(mod))}
+        allmodels,alltypes=np.loadtxt(
+            os.path.join(__dir__,'data','sncosmo','models.ref'),
+            dtype=bytes, unpack=True).astype(str)
+        allmoddict={allmodels[i]:alltypes[i] for i in range(len(allmodels))}
+        allmodlist = [str(m) for m in allmoddict.keys()]
         if snType!='Ia':
-            mods = [x[0] for x in sncosmo.models._SOURCES._loaders.keys() if x[0] in modDict.keys() and modDict[x[0]][:len(snType)]==snType]
+            modlist = [x[0] for x in sncosmo.models._SOURCES._loaders.keys()
+                       if x[0] in allmoddict.keys() and
+                       allmoddict[x[0]][:len(snType)]==snType]
         elif snType=='Ia':
-            mods = [x[0] for x in sncosmo.models._SOURCES._loaders.keys() if 'salt2' in x[0]]
+            modlist = [x[0] for x in sncosmo.models._SOURCES._loaders.keys()
+                       if 'salt2' in x[0]]
     else:
-        mods=models
-    mods=set(mods)
+        modlist=models
+    modset=set(modlist)
 
     args['sn_func'] = {'minuit': sncosmo.fit_lc, 'mcmc': sncosmo.mcmc_lc, 'nest': sncosmo.nest_lc}
     #get any properties set in kwargs that exist for the defined fitting function
@@ -161,12 +167,12 @@ def fit_data(curves, snType='Ia',bands=None,method='minuit', models=None, params
     if combined_or_separate not in ['separate','combined','both']:
         raise RuntimeError('Parameter "combined_or_separate must be "separate","combined", or "both".')
     if combined_or_separate=='separate':
-        curves=_fitSeparate(curves,mods,args,bounds)
+        curves=_fitSeparate(curves,modset,args,bounds)
     elif combined_or_separate=='combined':
-        curves=_fitCombined(curves,mods,args,bounds,combinedGrids)
+        curves=_fitCombined(curves,modset,args,bounds,combinedGrids)
     else:
-        curves=_fitSeparate(curves,mods,args,bounds)
-        curves=_fitCombined(curves,mods,args,bounds,combinedGrids)
+        curves=_fitSeparate(curves,modset,args,bounds)
+        curves=_fitCombined(curves,modset,args,bounds,combinedGrids)
     return curves
 
 def _fitCombined(curves,mods,args,bounds,grids,guess_amplitude_bound=False,
@@ -371,7 +377,7 @@ def nest_combined_lc(curves,model,res,vparam_names,bounds,snBounds,guess_amplitu
 
 
 
-def _fitSeparate(curves,mods,args,bounds):
+def _fitSeparate(curves, mods, args, bounds, showfit=False):
     resList=dict([])
     fitDict=dict([])
     #newBounds=dict([])
@@ -394,15 +400,32 @@ def _fitSeparate(curves,mods,args,bounds):
         else:
             fits=pyParz.foreach(mods,_fit_data,args)
 
-        bestChisq=np.inf
-        for f in fits:
-            if f:
-                res=f['res']
-                mod=f['model']
-                if res.chisq <bestChisq:
-                    bestChisq=res.chisq
-                    bestFit=mod
-                    bestRes=res
+        # Find the best-fit model and add it separately to the output fitDict.
+        if args['method'] == 'nest':
+            bestfitstat = -np.inf
+            for f in fits:
+                if f:
+                    res=f['res']
+                    mod=f['model']
+                    if res.logz > bestfitstat:
+                        bestfitstat = res.logz
+                        bestFit = mod
+                        bestRes = res
+        elif args['method'] == 'minuit':
+            bestfitstat = np.inf
+            for f in fits:
+                if f:
+                    res = f['res']
+                    mod = f['model']
+                    if res.chisq < bestfitstat:
+                        bestfitstat = res.chisq
+                        bestFit = mod
+                        bestRes = res
+        else : # using mcmc or some other fitter?
+            bestFit = None
+            bestRes = None
+        fitDict[d] = [fits, bestFit, bestRes]
+
         #for param in [p for p in __thetaSN__ if p in bestRes.vparam_names]:
         #    if param not in newBounds:
         #        newBounds[param]=(.75*bestFit.get(param),1.25*bestFit.get(param))
@@ -411,31 +434,66 @@ def _fitSeparate(curves,mods,args,bounds):
         #        upper=np.mean([newBounds[param][1],1.25*bestFit.get(param)])
         #        newBounds[param]=(lower,upper)
 
-        fitDict[d]=[fits,bestFit,bestRes]
     #for param in [p for p in bounds if p not in newBounds.keys()]:
     #    newBounds[param]=bounds[param]
-    #if all the best models aren't the same, take the one with min chisq (not the best way to do this)
-    if not all([fitDict[d][1]._source.name==fitDict[fitDict.keys()[0]][1]._source.name for d in fitDict.keys()]):
-        print('All models did not match, finding best...')
-        bestChisq=np.inf
-        bestMod=None
-        for d in fitDict.keys():
-            chisq=fitDict[d][2].chisq
-            if chisq<bestChisq:
-                bestChisq=chisq
-                bestMod=fitDict[d][1]._source.name
+    #if all the best models for the separate SN images aren't the same, find
+    # the one with the highest likelihood across all the images, and adopt it
+    # as the single best-fit model (not the best way to do this)
+    if args['method'] != 'mcmc' and \
+        not all([fitDict[d][1]._source.name == \
+                fitDict[list(fitDict.keys())[0]][1]._source.name
+                for d in fitDict.keys()]):
+        print('All best-fit LC models did not match, finding best...')
 
+        if args['method'] == 'nest':
+            bestfitstat=-np.inf
+            bestMod=None
+            for d in fitDict.keys():
+                logz=fitDict[d][2].logz
+                if logz>bestfitstat:
+                    bestfitstat=logz
+                    bestMod=fitDict[d][1]._source.name
+        elif args['method'] == 'minuit':
+            bestfitstat=np.inf
+            bestMod=None
+            for d in fitDict.keys():
+                chisq=fitDict[d][2].chisq
+                if chisq<bestfitstat:
+                    bestfitstat=chisq
+                    bestMod=fitDict[d][1]._source.name
+        else:
+            bestMod = None
+            print("Warning: unable to identify a single best-fit model"
+                  " across all images when using fitting method " + \
+                  args['method'])
+
+        # change the model for every image to be the same best-fit model
         for d in fitDict.keys():
             for f in fitDict[d][0]:
-
                 if f and f['model']._source.name==bestMod:
                     fitDict[d][1]=f['model']
                     fitDict[d][2]=f['res']
                     break
 
+    # TODO : S.R. needs this explained.  Are you running minuit or nestle
+    # first, then overwriting the fit results with nest_lc fitting?  Why?
     for d in fitDict.keys():
         _,bestFit,bestMod=fitDict[d]
-        nest_res,nest_fit=sncosmo.nest_lc(curves.images[d].table,bestFit,vparam_names=bestRes.vparam_names,bounds=bounds,guess_amplitude_bound=False,maxiter=50,npoints=10)
+        # sncosmo.nest_lc requires user-specified bounds on all parameters that
+        # are varied for the fit (except for t0, but we want bounds there also)
+        # Here we set these bounds to +-5sigma, using the error from the
+        # last fitting run.
+        bestFitBounds = {}
+        for parname, parval in zip(bestRes.param_names, bestRes.parameters):
+            if parname in bestRes.vparam_names:
+                parerr = bestRes.errors[parname]
+                bestFitBounds[parname] = [parval-5*parerr,parval+5*parerr]
+        #TODO: do we really want to overwrite bestFitBounds with user's bounds?
+        if bounds:
+            bestFitBounds.update(bounds)
+        nest_res, nest_fit=sncosmo.nest_lc(
+            curves.images[d].table, bestFit, bestRes.vparam_names, bestFitBounds,
+            guess_amplitude_bound=False, maxiter=50, npoints=10)
         #sncosmo.plot_lc(data=curves.images[d].table,model=nest_fit,errors=nest_res.errors)
         #plt.show()
         #plt.close()
@@ -454,10 +512,11 @@ def _fitSeparate(curves,mods,args,bounds):
             else:
                 curves.images[d].fits.model.set(**{p:joint[p][0]})
             #print(curves.images[d].fits.model._source.t0)
-    for d in curves.images.keys():
-        sncosmo.plot_lc(curves.images[d].table,model=curves.images[d].fits.model,errors=curves.images[d].fits.res)
-        plt.show()
-        plt.close()
+    if showfit:
+        for d in curves.images.keys():
+            sncosmo.plot_lc(curves.images[d].table,model=curves.images[d].fits.model,errors=curves.images[d].fits.res)
+            #plt.show()
+            #plt.close()
 
     return curves
 
