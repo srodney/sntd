@@ -1,4 +1,4 @@
-from matplotlib import pyplot as plt
+#from matplotlib import pyplot as plt
 #import sncosmo
 from sntd import simulation, fitting
 
@@ -31,4 +31,4 @@ lcs.combine_curves(tds={'S1':1,'S2':t0_s2-t0_s1},
                    mus={'S1':1,'S2':A_s2/A_s1})
 
 lcs.plot_lc_combined(bands=['bessellb', 'bessellv', 'bessellr'],
-                     showmodel=False, showfig=True, savefig=False)
+                     showmodel=True, showfig=True, savefig=False)

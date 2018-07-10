@@ -303,25 +303,9 @@ class curveDict(dict):
                     filename=filename, orientation=orientation,
                     model=model, zp=self.zpDict, zpsys=self.zpsys,
                     **kwargs)
+
         if showfig:
             plt.show()
-
-        #TODO : apply time-delay shifts and magnifications to the model?
-        '''
-                if showmodel and 'td' in self.images[lc].simMeta:
-                    # Plot the underlying model, including dust and lensing
-                    # effects, as a black curve for each simulated SN image
-                    time_model = np.arange(self.images[lc].table['time'].min(),
-                                           self.images[lc].table['time'].max(),
-                                           0.1)
-                    time_shifted = time_model - self.images[lc].simMeta['td']
-                    flux_magnified = self.model.bandflux(
-                        b, time_shifted, self.zpDict[b], self.zpsys) * \
-                                     self.images[lc].simMeta['mu']
-                    ax.plot(time_model, flux_magnified, 'k-')
-                    # import pdb; pdb.set_trace()
-            i += 1
-        '''
 
         # TODO : make a plot legend?
         #plt.figlegend(leg, np.sort(list(self.images.keys())), frameon=False,
