@@ -486,27 +486,26 @@ def _fitSeparate(curves, mods, args, bounds, showfit=False):
         _,bestFit,bestRes=fitDict[d]
         # sncosmo.nest_lc requires user-specified bounds on all parameters that
         # are varied for the fit (except for t0, but we want bounds there also)
-        # Here we set these bounds to +-5sigma, using the error from the
-        # last fitting run for each SN image (each 'curve' object).
+        # Here we set these bounds to the greater of +-5sigma, or +-10%,
+        # using the error from the last fitting run for each SN image (each
+        # 'curve' object).
         bestFitBounds = {}
         for parname, parval in zip(bestRes.param_names, bestRes.parameters):
             if parname in bestRes.vparam_names:
-                parerr = bestRes.errors[parname]
-                bestFitBounds[parname] = [parval-5*parerr,parval+5*parerr]
+                par_5sigma = 5 * bestRes.errors[parname]
+                if np.abs(par_5sigma/parval) < 0.1:
+                    par_5sigma = 0.1 * np.abs(parval)
+                bestFitBounds[parname] = [parval-par_5sigma,parval+par_5sigma]
         #TODO: do we really want to overwrite bestFitBounds with user's bounds?
         if bounds:
             bestFitBounds.update(bounds)
         nest_res, nest_fit=sncosmo.nest_lc(
             curves.images[d].table, bestFit, bestRes.vparam_names, bestFitBounds,
-            guess_amplitude_bound=False, maxiter=50, npoints=10)
-        #sncosmo.plot_lc(data=curves.images[d].table,model=nest_fit,errors=nest_res.errors)
-        #plt.show()
-        #plt.close()
+            guess_amplitude_bound=False, maxiter=50, npoints=10, verbose=False)
         resList[d]=nest_res
         curves.images[d].fits=newDict()
         curves.images[d].fits['model']=nest_fit
         curves.images[d].fits['res']=nest_res
-        #print(curves.images[d].simMeta)
 
     joint=_joint_likelihood(resList,verbose=True)
     for p in joint.keys():

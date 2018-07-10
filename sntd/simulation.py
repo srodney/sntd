@@ -1,4 +1,4 @@
-import sncosmo,datetime,sys,os,scipy
+import sncosmo, datetime, sys, os, scipy
 import numpy as np
 from astropy.time import Time
 from astropy.table import Table
@@ -32,8 +32,9 @@ def createRandMultiplyImagedSN(
         numImages=2, cadence=5, epochs=50, bands=['F140W','F105W','F160W'],
         gain=1000., skynoiseRange=(1,5), mjdRange=None, zpsys='ab', zp=None,
         microlensing=False, cc_av=.9, ia_av=.3, dust='CCM89Dust',
-        screenz=None, screenebv=None, effect_frames=['rest','free'],
-        effect_names=['host','screen'], minsnr=0.0, av_host=.3, z_lens=None,
+        dust_frames=['rest', 'free'],
+        dust_names=['host', 'lens'], dust_ebv=[None, None],
+        minsnr=0.0, av_host=.3, z_lens=None,
         av_lens=None, scatter=True):
     """Generate a multiply-imaged SN light curve set, with time delays and
     magnifications drawn randomly from user-defined ranges.
@@ -49,8 +50,8 @@ def createRandMultiplyImagedSN(
         numImages=numImages, cadence=cadence, epochs=epochs, bands=bands,
         gain=gain, skynoiseRange=skynoiseRange, mjdRange=mjdRange,
         zpsys=zpsys, zp=zp, microlensing=microlensing, cc_av=cc_av,
-        ia_av=ia_av, dust=dust, screenz=screenz, screenebv=screenebv,
-        effect_frames=effect_frames, effect_names=effect_names, minsnr=minsnr,
+        ia_av=ia_av, dust_model=dust, screenz=screenz, screenebv=screenebv,
+        dust_frames=dust_frames, dust_names=dust_names, minsnr=minsnr,
         av_host=av_host, z_lens=z_lens, av_lens=av_lens, scatter=scatter)
 
 
@@ -58,17 +59,25 @@ def createRandMultiplyImagedSN(
 def createMultiplyImagedSN(
         sourcename, snType, redshift, telescopename='telescope',
         objectName='object', time_delays=[0., 20.], magnifications=[1., 5.],
-        numImages=2, cadence=5, epochs=50, bands=['F140W', 'F105W', 'F160W'],
+        numImages=2, cadence=5, epochs=50, bands=['F105W', 'F125W', 'F160W'],
         gain=1000., skynoiseRange=(1, 5), mjdRange=None, zpsys='ab', zp=None,
-        microlensing=False, cc_av=.9, ia_av=.3, dust='CCM89Dust',
-        screenz=None, screenebv=None, effect_frames=['rest', 'free'],
-        effect_names=['host', 'screen'], minsnr=0.0, av_host=.3, z_lens=None,
-        av_lens=None, scatter=True):
+        microlensing_type=None, microlensing_params=[],
+        dust_model='CCM89Dust', av_host=.3, av_lens=None,
+        z_lens=None, minsnr=0.0, scatter=True):
     """Generate a multiply-imaged SN light curve set, with user-specified time
     delays and magnifications.
-    """
 
-    #TODO sample from dust prior for host and lens-plane dust.
+    :param microlensing_type: str  Name any of the valid sncosmo microlensing
+    types. Currently ['AchromaticSplineMicrolensing',
+    'ChromaticSplineMicrolensing', 'AchromaticMicrolensing']
+    :param microlensing_params: list   Parameters for the microlensing effect
+    -- see sncosmo models.py for details.  Currently, if using either of the
+    spline-based "mock" lensing options, then this params list must give
+    three values for [nanchor, sigmadm, nspl].  If the microlensing_type is
+    'AchromaticMicrolensing' then we are reading a simulated microlensing
+    data file, and this params list must give [filename, mag_type] where
+    mag_type is 'multiply' or 'add'.
+    """
     if not mjdRange:
         now=np.round(Time(datetime.datetime.now()).mjd,3)
         times=np.linspace(now,now+cadence*epochs,epochs)
@@ -83,187 +92,155 @@ def createMultiplyImagedSN(
     obj.bands = set(bandList)
     obj.zpDict = dict([(bandList[i], zpList[i]) for i in range(len(bandList))])
     obj.zpsys = zpsys
-    obs=Table({'time':np.tile(times,len(bands)),
-               'band':bandList, 'zpsys':[zpsys for i in range(len(bandList))],
-               'zp':zpList,
-               'skynoise':np.random.uniform(
-                   skynoiseRange[0],skynoiseRange[1],len(bandList)),
-               'gain':[gain for i in range(len(bandList))]})
-
+    obstable = Table({'time':np.tile(times,len(bands)), 'band':bandList,
+                      'zpsys':[zpsys for i in range(len(bandList))],
+                      'zp':zpList,
+                      'skynoise':np.random.uniform(
+                          skynoiseRange[0],skynoiseRange[1],len(bandList)),
+                      'gain':[gain for i in range(len(bandList))]})
     absolutes=_getAbsoluteDist()
 
-    # Set up the dust extinction effects in the host galaxy and lens plane
-    # TODO : allow different lens-plane dust for each image?
-    R_V = 3.1  # TODO: allow alternate dust law
-    if dust:
+    # Set up the dust_model extinction effects in the host galaxy and lens plane
+    # TODO allow additional dust screens, not in the host or lens plane?
+    # TODO sample from a prior for host and lens-plane dust A_V?
+    # TODO : allow different lens-plane dust_model for each image?
+    R_V = 3.1  # TODO: allow user-specified alternate dust R_V
+    RV_lens = R_V
+    RV_host = R_V
+    dust_frames = []
+    dust_names = []
+    dust_effect_list = []
+    if dust_model and (av_lens or av_host):
         dust_effect = {'SFD98Map': sncosmo.SFD98Map,
                        'CCM89Dust': sncosmo.CCM89Dust,
                        'OD94Dust': sncosmo.OD94Dust,
-                       'F99Dust': sncosmo.F99Dust}[dust]()
+                       'F99Dust': sncosmo.F99Dust}[dust_model]()
+        if av_host:
+            dust_frames.append('rest')
+            dust_names.append('host')
+            dust_effect_list.append(dust_effect)
         if av_lens:
-            effect_frames = ['rest', 'free']
-            effect_names = ['host', 'lens']
-        else:
-            effect_frames = ['rest']
-            effect_names = ['host']
-    else:
-        dust_effect=[]
-        effect_names = []
-        effect_frames = []
+            dust_frames.append('free')
+            dust_names.append('lens')
+            dust_effect_list.append(dust_effect)
 
-    effects=[dust_effect for i in range(len(effect_names))]
-    effect_names=effect_names if effect_names else []
-    effect_frames=effect_frames if effect_frames else []
-    if not isinstance(effect_names,(list,tuple)):
-        effects=[effect_names]
-    if not isinstance(effect_frames,(list,tuple)):
-        effects=[effect_frames]
+    # The following is not needed, but may be resurrected when we allow user
+    # to provide additional dust screens.
+    #if not isinstance(dust_names, (list, tuple)):
+    #    dust_names=[dust_names]
+    #if not isinstance(dust_frames, (list, tuple)):
+    #    dust_frames=[dust_frames]
 
-    model=sncosmo.Model(source=sourcename, effects=effects,
-                        effect_names=effect_names,
-                        effect_frames=effect_frames)
+    # The sncosmo Model is initially set up with only dust effects, because
+    # as currently constructed, dust has the same effect on all images.
+    # Microlensing effects are added separately for each SN image below.
+    model=sncosmo.Model(source=sourcename, effects=dust_effect_list,
+                        effect_names=dust_names, effect_frames=dust_frames)
     model.set(z=redshift)
-
-    if z_lens is None:
-        z_lens=redshift/2.
-    if av_lens:# is None:
-        # av_lens=np.abs(np.random.normal(0,1))
-        ebv_lens = av_lens/R_V
-        model.set(lensz=z_lens, lensebv=ebv_lens)
-
     if snType in ['IIP','IIL','IIn']:
         absBand='bessellb'
     else:
         absBand='bessellr'
-    model.set_source_peakabsmag(_getAbsFromDist(absolutes[snType]['dist']),absBand,zpsys)
-    #print(model.source_peakabsmag('bessellr',zpsys))
-
-    #model.set(t0=times[0]+.25*(times[-1]-times[0]))
-
-    if snType=='Ia':
-        x0=model.get('x0')
-
-        params={'z':redshift,'t0':times[0]+.3*(times[-1]-times[0]),'x0':x0,'x1':np.random.normal(0.,1.),'c':np.random.normal(0.,.1),'hostebv':ia_av}
-    else:
-        amp=model.get('amplitude')
-        params={'z':redshift,'t0':times[0]+.3*(times[-1]-times[0]),'amplitude':amp,'hostebv':cc_av/3.1}
-    params['hostr_v']=3.1
-    params['screenr_v']=3.1
-
-
-    #model.set(**params)
-    #print(model.bandflux('bessellb',params['t0'],zp=25,zpsys='ab'))
-    #sys.exit()
-
-    #lc=sncosmo.photdata.photometric_data(sncosmo.realize_lcs(obs,model,[params],trim_observations=True)[0])
-    #lc=lc.normalized()
-    #lc=Table([lc.time,[x.name for x in lc.band],lc.flux,lc.fluxerr,lc.zp,lc.zpsys],names=['time','band','flux','fluxerr','zp','zpsys'])
+    model.set_source_peakabsmag(_getAbsFromDist(absolutes[snType]['dist']),
+                                absBand, zpsys)
+    # TODO: allow user to specify parameters like x1, c, t0 if desired.
     t0 = times[0] + .25 * (times[-1] - times[0])
-
     if snType=='Ia':
         x0=model.get('x0')
-        params={'z':redshift,'t0':t0,'x0':x0,'x1':np.random.normal(0.,1.),
-                'c':np.random.normal(0.,.1),'hostebv':av_host/R_V}
+        params={'z':redshift, 't0':t0, 'x0':x0,
+                'x1':np.random.normal(0.,1.), 'c':np.random.normal(0.,.1)}
     else:
         amp=model.get('amplitude')
-        params={'z':redshift,'t0':t0,'amplitude':amp,'hostebv':av_host/R_V}
-    params['hostr_v']=R_V
+        params={'z':redshift, 't0':t0, 'amplitude':amp}
+    model.set(**params)
+    if av_host:
+        ebv_host = av_host/RV_host
+        model.set(hostebv=ebv_host, hostr_v=RV_host)
+    else:
+        ebv_host = 0
     if av_lens:
-        params['lensr_v']=R_V
+        if z_lens is None:
+            z_lens = redshift / 2.  # TODO : Warn user about missing z_lens
+        ebv_lens = av_lens/RV_lens
+        model.set(lensz=z_lens, lensebv=ebv_lens, lensr_v=RV_lens)
+    else:
+        ebv_lens = 0
 
-
-    for i in range(numImages):
-        model=sncosmo.Model(source=sourcename,effects=effects,effect_names=effect_names,effect_frames=effect_frames)
-        tempParams=deepcopy(params)
-        delay=time_delays[i]
-        mu=magnifications[i]
-        tempParams['t0']+=delay
-        if snType=='Ia':
-            tempParams['x0']*=mu
-        else:
-            tempParams['amplitude']*=mu
-
-        lc=sncosmo.realize_lcs(obs,model,[tempParams],
-                               trim_observations=True,
-                               scatter=False)[0]
-        #do my own scatter, snnosmo's is weird
-        for i in range(len(lc)):
-            temp=np.random.normal(lc['flux'][i],lc['fluxerr'][i])
-            while np.abs(temp)>(np.abs(lc['flux'][i])+np.abs(lc['fluxerr'][i])):
-                temp=np.random.normal(lc['flux'][i],lc['fluxerr'][i])
-            lc['flux'][i]=temp
-        lc=lc[(np.abs(lc['flux']/lc['fluxerr']))>=minsnr]
-
-
-        #print(lc)
-        #temp=deepcopy(lc)
-
-        #temp['time']+=delay
-        if microlensing:
-
-            lc,mlCurves=_addML(lc)
-
-        #temp['flux']*=mu
-        #temp['fluxerr']*=mu
-
-
-        tempCurve=curve(zp=zp,zpsys=zpsys)
-
-        tempCurve.table=lc
-        tempCurve.bands=list(set(lc['band']))
-        tempCurve.simMeta=lc.meta
-        tempCurve.simMeta['screenebv']=screenebv
-        tempCurve.simMeta['screenz']=screenz
-        tempCurve.simMeta['mu']=mu
-        tempCurve.simMeta['td']=delay
-        if microlensing:
-            tempCurve.ml=mlCurves
-
-        # Make a separate model_i for each SN image, so that the magnification
-        # can be reflected in the model_i parameters and propagate correctly into
-        # flux uncertainties, and the observation epochs will be the same for
-        # all images.
+    # Step through each of the multiple SN images, adding time delays,
+    # macro magnifications, and microlensing effects.
+    for imnum, td, mu in zip(range(numImages), time_delays, magnifications):
+        # Make a separate model_i for each SN image, so that lensing effects
+        # can be reflected in the model_i parameters and propagate correctly
+        # into realize_lcs for flux uncertainties
         model_i = deepcopy(model)
         params_i = deepcopy(params)
         if snType=='Ia':
             params_i['x0'] *= mu
         else:
             params_i['amplitude'] *= mu
-        params_i['t0'] += delay
-        lc_i = sncosmo.realize_lcs(obs, model_i, [params_i],
-                                   trim_observations=True, scatter=scatter)[0]
-        tempCurve=curve(zp=zp, zpsys=zpsys)
+        params_i['t0'] += td
 
-        # TODO : implement a more general microlensing apparatus
-        if microlensing:
-            if lc_i['band'][0].lower().startswith('bessell'):
-                bandset = 'bessell'
-            elif lc_i['band'][0].lower().startswith('f1'):
-                bandset = 'hst'
-            mlCurve=getDiffCurve(
-                lc_i['time'][lc_i['band']==lc_i['band'][0]],
-                bandset=bandset)
-            lc_i=_addML(mlCurve,lc_i)
-            tempCurve.ml=mlCurve
+        if microlensing_type is not None:
+            # add microlensing effect
+            if 'spline' in microlensing_type.lower():
+                # Initiate a spline-based mock ml effect (at this point,
+                # a set of random splines is generated and the microlensing
+                # magnification curve is fixed)
+                nanchor, sigmadm, nspl = microlensing_params
+                if microlensing_type.lower().startswith('achromatic'):
+                    ml_spline_func = sncosmo.AchromaticSplineMicrolensing
+                else :
+                    ml_spline_func = sncosmo.ChromaticSplineMicrolensing
+                ml_effect = ml_spline_func(nanchor=nanchor, sigmadm=sigmadm,
+                                           nspl=nspl)
+            else:
+                # Load a microlensing simulation from a data file
+                # TODO : guard against common user entry errors
+                # TODO : allow random file selection from a directory
+                ml_filename = microlensing_params[0]
+                ml_mag_type = microlensing_params[1]
+                ml_effect = sncosmo.AchromaticMicrolensing(
+                    ml_filename, ml_mag_type)
+            model_i.add_effect(ml_effect, 'microlensing', 'free')
+            model_i.set(microlensingz=z_lens)
+            params_i['microlensingz'] = z_lens # Redundant?
         else:
-            tempCurve.ml=None
-        tempCurve.table=lc_i
-        tempCurve.bands=list(set(lc_i['band']))
-        tempCurve.simMeta=deepcopy(lc_i.meta)
-        tempCurve.simMeta['av_lens']=av_lens
-        tempCurve.simMeta['z_lens']=z_lens
-        tempCurve.simMeta['mu']=mu
-        tempCurve.simMeta['td']=delay
+            ml_effect = None
 
+        # Generate the simulated SN light curve observations, make a `curve`
+        # object, and store the simulation metadata
         model_i.set(**params_i)
-        tempCurve.simMeta['model']=model_i
+        table_i = sncosmo.realize_lcs(
+            obstable , model_i, [params_i],
+            trim_observations=True, scatter=scatter)[0]
+        curve_i=curve(zp=zp,zpsys=zpsys)
+        curve_i.table=table_i
+        curve_i.bands=list(set(table_i['band']))
+        curve_i.simMeta=table_i.meta
+        curve_i.simMeta['model']=model_i
+        curve_i.simMeta['hostebv']=ebv_host
+        curve_i.simMeta['lensebv']=ebv_lens
+        curve_i.simMeta['lensz']=z_lens
+        curve_i.simMeta['mu']=mu
+        curve_i.simMeta['td']=td
+        curve_i.simMeta['microlensing_type'] = microlensing_type
+        curve_i.simMeta['microlensing_params'] = microlensing_params
+        obj.add_curve(curve_i)
 
-        obj.add_curve(tempCurve)
+        # #do my own scatter, sncosmo's is weird
+        # for i in range(len(lc_i)):
+        #     temp=np.random.normal(lc_i['flux'][i],lc_i['fluxerr'][i])
+        #     # 1-sigma clipping ?!
+        #     #while np.abs(temp)>(np.abs(lc_i['flux'][i])+np.abs(lc_i['fluxerr'][i])):
+        #     #    temp=np.random.normal(lc_i['flux'][i],lc_i['fluxerr'][i])
+        #     lc_i['flux'][i]=temp
+        # lc_i=lc_i[(np.abs(lc_i['flux']/lc_i['fluxerr']))>=minsnr]
 
     # Store the un-lensed model as a component of the lensed SN object.
     model.set(**params)
     obj.model = model
     return(obj)
+
 
 def _addML(myCurve):
     mlCurves=dict([])

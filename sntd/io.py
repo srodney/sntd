@@ -193,10 +193,14 @@ class curveDict(dict):
             if combined:
                 ithisim = np.where(self.combined.table['object'] == imname)
                 thisim_table = self.combined.table[ithisim]
+                # TODO : either make the user provide a model object, or /
+                # allow more specificity of which model to show with 'fit'
                 if showmodel=='fit':
                     model = self.model
                 elif showmodel=='sim':
                     model = self.images[imname].simMeta['model']
+                elif showmodel:
+                    model = showmodel
                 else:
                     model = None
             else:
@@ -205,6 +209,8 @@ class curveDict(dict):
                     model = self.images[imname].simMeta['model']
                 elif showmodel=='fit':
                     model = self.images[imname].model
+                elif showmodel:
+                    model = showmodel
                 else:
                     model = None
             plot_lc(thisim_table, bands=bands, marker=marker,
