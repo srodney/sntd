@@ -11,16 +11,18 @@ if __name__=='__main__':
         modname, snType, .1, bands=['bessellb','bessellv','bessellr'], zp=25,
         cadence=10, epochs=15, numImages=2, timeDelayRange=(0,30),
         objectName='Test', telescopename='HST', microlensing=False)
-    #ifig=0
-    #for k in lcs.images.keys():
-    #    ifig += 1
-    #    fig = plt.figure(ifig, figsize=[10,3])
-    #    sncosmo.plot_lc(lcs.images[k].table)
-
-    lcs_minuit=sntd.fitting.fit_data(lcs, snType='Ib', models=['snana-2004gv'],
-                                  params=['amplitude','t0'],
-                                  combined_or_separate='separate',
-                                  method='minuit')
+    ifig=0
+    print("Simulated strongly lensed SN \n")
+    for k in lcs.images.keys():
+        ifig += 1
+        fig = plt.figure(ifig, figsize=[10,3])
+        sncosmo.plot_lc(lcs.images[k].table)
+        print("image {} t0={}".format(k, lcs.images[k].simMeta['t0']))
+    #plt.show()
+    #lcs_minuit=sntd.fitting.fit_data(lcs, snType='Ib', models=['snana-2004gv'],
+    #                              params=['amplitude','t0'],
+    #                              combined_or_separate='separate',
+    #                              method='minuit')
 
     #lcs_nest=sntd.fitting.fit_data(lcs, snType='Ib', models=['snana-2004gv'],
     #                              params=['amplitude','t0'],
@@ -144,7 +146,7 @@ else:
         plt.savefig(k+'.pdf',format='pdf',overwrite=True)
         plt.clf()
     sntd.spline_fit(lcs)
-    lcs.plot_object()
+    lcs.plot_lc_obs()
     lcs.combine_curves()
     #fig=plt.figure()
     #ax=fig.gca()
@@ -164,7 +166,7 @@ else:
     sncosmo.plot_lc(lcs.combined.table,model=lcs.combined.fit.model,errors=lcs.combined.fit.res)
     plt.show()
     sys.exit()
-    lcs.plot_object(filename='type'+snType)
+    lcs.plot_lc_obs(filename='type' + snType)
 
     sys.exit()
     #lcs.plot_microlensing()

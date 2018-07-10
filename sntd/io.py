@@ -7,11 +7,12 @@ import os
 import pycs
 import sncosmo
 from astropy.table import Table,vstack,Column
-from pycs.gen.lc import lightcurve
+#from pycs.gen.lc import lightcurve
 from scipy.stats import mode
 from sncosmo import get_magsystem
 from copy import deepcopy
 import matplotlib.pyplot as plt
+from .plotting import plot_lc, testplot, _COLORLIST15, _COLORLIST5
 
 from .util import *
 
@@ -27,9 +28,11 @@ class curveDict(dict):
     #todo document this class
     def __init__(self,telescopename="Unknown",object="Unknown"):
         """
-        Constructor for curveDict class. Inherits from the dictionary class, and is the main object of organization used by SNTD.
-        :param telescopename: Name of the telescope that the data were gathered from
-        :param object: Object of interest
+        Constructor for curveDict class. Inherits from the dictionary class,
+        and is the main object of organization used by SNTD.
+        :param telescopename: Name of the telescope that the data were
+        gathered from
+        :param object: Name of the object (i.e., the supernova ID)
         """
         super(curveDict, self).__init__() #init for the super class
         self.meta = {'info': ''}
@@ -149,7 +152,6 @@ class curveDict(dict):
             temp=deepcopy(self.images[k].table)
             temp['time']-=tds[k]
             temp['flux']/=mus[k]
-            temp['fluxerr']/=mus[k]
 
             self.combined.table=vstack([self.combined.table,temp])
         #print(self.combinedCurve)
@@ -158,19 +160,18 @@ class curveDict(dict):
         self.combined.meta['mu']=mus
         return(self)
 
-
-
-
-
-    def plot_object(self, bands='all', showfig=False, savefig=True,
-                    filename='mySN', orientation='horizontal',
+    def plot_lc_obs(self, bands='all', showfig=False,
+                    savefig=True, filename='mySN',
+                    orientation='horizontal',
                     showmodel=False):
-        """Plot the multiply-imaged SN light curves and save to a file.
-        Each subplot shows a single-band light curve, for all images of the SN. 
-        
-        bands: 'all' = plot all bands; or provide a list of strings 
+        """Plot the multiply-imaged SN light curve, as observed.
+        Each subplot shows a single-band light curve, for all images of the SN.
+
+        bands: 'all' = plot all bands; or provide a list of strings
         orientation: 'horizontal' = all subplots are in a single row
-            'vertical' = all subplots are in a single column        
+            'vertical' = all subplots are in a single column
+        showmodel: bool,  True = for a simulated SN, show the sncosmo model
+            used to generate it.
         """
         if bands == 'all':
             bands = self.bands
@@ -182,45 +183,46 @@ class curveDict(dict):
             ncols = nbands
             nrows = 1
 
-        colors=['r','g','b','k']
-        #markers=['.','^','*','8','s','+','D']
-        i=0
+        # TODO: make this more general
+        colors = ['r', 'g', 'b', 'k']
+        # markers=['.','^','*','8','s','+','D']
+        i = 0
         # nrows=int(math.ceil(len(bands)/2.))
-        fig,axlist=plt.subplots(nrows=nrows, ncols=ncols,
-                                sharex=True, sharey=True)
-        if nbands==1:
+        fig, axlist = plt.subplots(nrows=nrows, ncols=ncols,
+                                   sharex=True, sharey=True)
+        if nbands == 1:
             axlist = [axlist]
-        leg=[]
+        leg = []
         for lc in np.sort(list(self.images.keys())):
             for b, ax in zip(bands, axlist):
-                if b==list(bands)[0]:
+                if b == list(bands)[0]:
                     leg.append(
                         ax.errorbar(self.images[lc].table['time'][
-                                        self.images[lc].table['band']==b],
+                                        self.images[lc].table['band'] == b],
                                     self.images[lc].table['flux'][
-                                        self.images[lc].table['band']==b],
+                                        self.images[lc].table['band'] == b],
                                     yerr=self.images[lc].table['fluxerr'][
-                                        self.images[lc].table['band']==b],
-                                    markersize=4, fmt=colors[i]+'.'))
+                                        self.images[lc].table['band'] == b],
+                                    markersize=4, fmt=colors[i] + '.'))
                 else:
                     ax.errorbar(self.images[lc].table['time'][
-                                    self.images[lc].table['band']==b],
+                                    self.images[lc].table['band'] == b],
                                 self.images[lc].table['flux'][
-                                    self.images[lc].table['band']==b],
+                                    self.images[lc].table['band'] == b],
                                 yerr=self.images[lc].table['fluxerr'][
-                                    self.images[lc].table['band']==b],
-                                markersize=4, fmt=colors[i]+'.')
+                                    self.images[lc].table['band'] == b],
+                                markersize=4, fmt=colors[i] + '.')
                 if self.images[lc].ml:
                     ax.plot(self.images[lc].table['time'][
-                                self.images[lc].table['band']==b],
+                                self.images[lc].table['band'] == b],
                             self.images[lc].table['flux'][
-                                self.images[lc].table['band']==b] * \
+                                self.images[lc].table['band'] == b] * \
                             self.images[lc].ml[b], color=colors[i])
 
                 ax.text(0.95, 0.95, b.upper(), fontsize='large',
                         transform=ax.transAxes, ha='right', va='top')
 
-                if showmodel:
+                if showmodel and 'td' in self.images[lc].simMeta:
                     # Plot the underlying model, including dust and lensing
                     # effects, as a black curve for each simulated SN image
                     time_model = np.arange(self.images[lc].table['time'].min(),
@@ -231,33 +233,107 @@ class curveDict(dict):
                         b, time_shifted, self.zpDict[b], self.zpsys) * \
                                      self.images[lc].simMeta['mu']
                     ax.plot(time_model, flux_magnified, 'k-')
-                    #import pdb; pdb.set_trace()
-            i+=1
+                    # import pdb; pdb.set_trace()
+            i += 1
 
-        #if not len(self.bands)%2==0:
-            #fig.delaxes(ax[nrows-1][1])
-            #axlist[nrows-2][1].tick_params(axis='x',labelbottom='on',bottom='on')
-        plt.figlegend(leg,np.sort(list(self.images.keys())), frameon=False,
+        # if not len(self.bands)%2==0:
+        # fig.delaxes(ax[nrows-1][1])
+        # axlist[nrows-2][1].tick_params(axis='x',labelbottom='on',bottom='on')
+        plt.figlegend(leg, np.sort(list(self.images.keys())), frameon=False,
                       loc='center right', fontsize='medium', numpoints=1)
 
         fig.text(0.5, 0.02, r'Observer-frame time (days)', ha='center',
                  fontsize='large')
         fig.text(-0.02, .5, 'Integrated Flux (detector counts)', va='center',
-                 rotation='vertical',fontsize='large')
-        #plt.suptitle('Multiply-Imaged SN "'+self.object+'" on the '+self.telescopename,fontsize=18)
+                 rotation='vertical', fontsize='large')
+        # plt.suptitle('Multiply-Imaged SN "'+self.object+'" on the '+self.telescopename,fontsize=18)
         if savefig:
-            plt.savefig(filename+'.pdf',format='pdf',overwrite=True)
+            plt.savefig(filename + '.pdf', format='pdf', overwrite=True)
         if showfig:
             plt.show()
-        plt.close()
+        # plt.close()
+        return
+
+    def plot_lc_combined(self, bands='all', showfig=False,
+                         savefig=True, filename='mySN',
+                         orientation='horizontal',
+                         showmodel=False, **kwargs):
+        """Plot the combined light curve of a multiply-imaged SN (i.e., after
+        you have run combine_curves() to apply time delay and magnification
+        shifts to the observed data).
+
+        Each subplot shows a single-band light curve, with all data from all
+        images of the SN.
+
+        bands: 'all' = plot all bands; or provide a list of strings
+        orientation: 'horizontal' = all subplots are in a single row
+            'vertical' = all subplots are in a single column
+        showmodel: str,
+            'sim' for a simulated SN, show the sncosmo model used to create it.
+            'fit' show the best-fit model.
+        """
+        # TODO : do a proper check to see if there are real data in `combined`.
+        #if 'combined' not in self.keys():
+        #    raise ValueError("No combined light curve available. "
+        #          "Try running combine_curves()")
+
+        if bands=='all':
+            bands = self.combined.bands
+        if showmodel:
+            model = self.model
+        else:
+            model = None
+
+        if len(self.images.keys())>5:
+            colorlist = _COLORLIST15
+        else:
+            colorlist = _COLORLIST5
+        markerlist = ['o', '^', 's', 'd', '*', '8', 's', '+', 'D', '.']
+        # axlist = fig.add_subplots(1,2,1)
+        fig, axlist = plt.subplots(nrows=1, ncols=3,
+                                   sharex=True, sharey=True)
+        for imname,marker,color in zip(self.images.keys(),markerlist,colorlist):
+            ithisim = np.where(self.combined.table['object']==imname)
+            thisim_table = self.combined.table[ithisim]
+            #ax1 = axlist[0]
+            #testplot(thisim_table, ax1, marker, color)
+            plot_lc(thisim_table, bands=bands, marker=marker,
+                    color=color,
+                    axlist=axlist, showfig=False, savefig=False,
+                    filename=filename, orientation=orientation,
+                    model=model, zp=self.zpDict, zpsys=self.zpsys,
+                    **kwargs)
+        if showfig:
+            plt.show()
+
+        #TODO : apply time-delay shifts and magnifications to the model?
+        '''
+                if showmodel and 'td' in self.images[lc].simMeta:
+                    # Plot the underlying model, including dust and lensing
+                    # effects, as a black curve for each simulated SN image
+                    time_model = np.arange(self.images[lc].table['time'].min(),
+                                           self.images[lc].table['time'].max(),
+                                           0.1)
+                    time_shifted = time_model - self.images[lc].simMeta['td']
+                    flux_magnified = self.model.bandflux(
+                        b, time_shifted, self.zpDict[b], self.zpsys) * \
+                                     self.images[lc].simMeta['mu']
+                    ax.plot(time_model, flux_magnified, 'k-')
+                    # import pdb; pdb.set_trace()
+            i += 1
+        '''
+
+        # TODO : make a plot legend?
+        #plt.figlegend(leg, np.sort(list(self.images.keys())), frameon=False,
+        #              loc='center right', fontsize='medium', numpoints=1)
+
         return
 
 
-
-
-class curve(lightcurve,object):
+#class curve(lightcurve,object):
+class curve(object):
     """
-    A class, inheriting from PyCS lightcurve superclass, that now also has an
+    A class that has an
     astropy.table.Table version of the data file for SNCosmo commands and flux/fluxerr
     arrays.
     """
@@ -504,6 +580,8 @@ class curve(lightcurve,object):
         self.fluxes += self.calcmagshiftfluxes()
         self.commentlist.append("CAUTION : magshift of %f APPLIED" % (self.magshift))
         self.magshift = 0.0  # as this is now applied.
+
+
 
 
     def rdbexport(self, filename=None, separator="\t", writeheader=True, rdbunderline=True, properties=None):

@@ -3,6 +3,29 @@ import math
 import matplotlib.pyplot as plt
 import numpy as np
 from . import util
+import sncosmo
+
+#Color-blind friendly palette via
+# https://jacksonlab.agronomy.wisc.edu/2016/05/23/15-level-colorblind-friendly-palette/
+_COLORLIST15 = [
+    "#000000",# 0 black
+    "#004949",# 1 darkteal
+    "#009292",# 2 teal
+    "#ff6db6",# 3 darkpink
+    "#ffb6db",# 4 lightpink
+    "#490092",# 5 purple
+    "#006ddb",# 6 royalblue
+    "#b66dff",# 7 orchid
+    "#6db6ff",# 8 tarheelblue
+    "#b6dbff",# 9 skyblue
+    "#920000",#10 brickred
+    "#924900",#11 brown
+    "#db6d00",#12 darkorange
+    "#24ff24",#13 green
+    "#ffff6d",#14 yellow
+ ]
+_COLORLIST5 = np.array(_COLORLIST15).take([5,2,12,10,0]).tolist()
+
 
 def plotObject(lcs,bands='all',showfig=False,savefig=True,filename='mySN'):
 
@@ -705,4 +728,106 @@ def display(lclist=[], splist=[],
         plt.clf()
 
 
+def plot_lc(table, bands='all', axlist=None,
+            showfig=False, savefig=True, filename='mySN',
+            orientation='horizontal', model=None, zp=25., zpsys='ab',
+            **kwargs):
+    """Plot the SN light curve given in `table.`
+    Each subplot shows a single-band light curve.  Optionally overlay the
+    provided `model`.
+
+    :param bands: 'all' = plot all bands; or provide a list of strings
+    :param axlist: list of same length as bands, giving matplotlib axis objects
+    to plot each single-band light curve into.
+    :param orientation: 'horizontal' = all subplots are in a single row
+        'vertical' = all subplots are in a single column
+        (ignored if axlist is provided)
+    :param model: an sncosmo model object, which can provide the flux vs time
+    for every band in `bands`.
+    :param zp: dict or float. If a float, the same zp is applied to all bands.
+    If a dict, keyed by bandpass name, with zp as value.
+    :param zpsys: 'ab' or 'vega'
+
+    ** Additional keyword arguments are passed to matplotlib.pyplot.errorbar()
+    """
+    table = util.standardize_table_colnames(table)
+    if bands == 'all':
+        bands = np.unique(table['band'])
+    nbands = len(bands)
+    if axlist is None or len(axlist)==0:
+        if orientation.startswith('v'):
+            ncols = 1
+            nrows = nbands
+        else:
+            ncols = nbands
+            nrows = 1
+        fig, axlist = plt.subplots(nrows=nrows, ncols=ncols,
+                                   sharex='all', sharey='all')
+    if not np.iterable(axlist):
+        axlist = [axlist]
+    if nbands == 1:
+        axlist = [axlist]
+    if nbands>5:
+        colors = _COLORLIST15
+    else:
+        colors = _COLORLIST5
+    markers=['o','s','^','d','*','8','s','+','D','.']
+
+    legendlist = []
+    for b, ax, c, m in zip(bands, axlist, colors, markers):
+        if isinstance(zp, dict):
+            zpthisband = zp[b]
+        else:
+            zpthisband = zp
+
+        # TODO : guard against user providing keyword aliases
+        plotargs = {'color':c, 'marker':m, 'ls':' '}
+        plotargs.update(**kwargs)
+        iband = table['band'] == b
+        pltout = ax.errorbar(table['time'][iband],
+                             table['flux'][iband],
+                             yerr=table['fluxerr'][iband],
+                             **plotargs)
+        if b == list(bands)[0]:
+            legendlist.append(pltout)
+
+        ax.text(0.95, 0.95, b.upper(), fontsize='large',
+                transform=ax.transAxes, ha='right', va='top')
+
+        if model:
+            # Plot the underlying model, including dust and lensing
+            # effects, as a black curve for each simulated SN image
+            time_model = np.arange(table['time'].min(),
+                                   table['time'].max(),
+                                   0.1)
+            flux_model = model.bandflux(b, time_model, zpthisband, zpsys)
+            ax.plot(time_model, flux_model, 'k-')
+
+    # TODO : make a legend
+    #plt.figlegend(leglist, , frameon=False,
+    #              loc='center right', fontsize='medium', numpoints=1)
+
+    # hidden whole-figure axes for shared x- and y-labels.
+    fig = plt.gcf()
+    fig.subplots_adjust(left=0.15, bottom=0.15, right=0.95, top=0.95,
+                        hspace=0.1, wspace=0.0)
+    wholefigaxes = fig.add_axes([0.02,0.15,0.9,0.82], frameon=False)
+    wholefigaxes.set_xticks([])
+    wholefigaxes.set_yticks([])
+    wholefigaxes.text(0.5, 0.0, r'Observer-frame time (days)', ha='center',
+             fontsize='large', transform=wholefigaxes.transAxes)
+    wholefigaxes.text(-0.02, .5, 'Flux', va='center',
+             rotation='vertical', fontsize='large',
+             transform=wholefigaxes.transAxes)
+    if savefig:
+        plt.savefig(filename + '.pdf', format='pdf', overwrite=True)
+    if showfig:
+        plt.show()
+    return
+
+
+def testplot(thisim_table, ax, marker, color):
+    ax.errorbar(thisim_table['time'], thisim_table['flux'],
+                yerr=thisim_table['fluxerr'],
+                marker=marker, color=color)
 

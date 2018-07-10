@@ -219,6 +219,13 @@ def _get_default_prop_name(prop):
     return prop
 
 
+def standardize_table_colnames(table):
+    for col in table.colnames:
+        if col != _get_default_prop_name(col.lower()):
+            table.rename_column(col, _get_default_prop_name(col.lower()))
+    return table
+
+
 def _isfloat(value):
     try:
         float(value)

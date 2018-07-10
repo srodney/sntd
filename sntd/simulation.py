@@ -26,12 +26,49 @@ def _getAbsFromDist(dist):
     mu,sigma=dist
     return(np.random.normal(mu,sigma))
 
-def createRandMultiplyImagedSN(sourcename,snType,redshift,telescopename='telescope',objectName='object',timeDelayRange=(0,30),muRange=(1,20),
-                               numImages=2,cadence=5,epochs=50,bands=['F140W','F105W','F160W'],gain=1000.,skynoiseRange=(1,5),mjdRange=None,zpsys='ab',zp=None,microlensing=False,
-                               cc_av=.9,ia_av=.3,dust='CCM89Dust',screenz=None,screenebv=None,effect_frames=['rest','free'],effect_names=['host','screen'],minsnr=0.0,av_host=.3,z_lens=None, av_lens=None,scatter=True):
+def createRandMultiplyImagedSN(
+        sourcename, snType, redshift, telescopename='telescope',
+        objectName='object', timeDelayRange=(0,30), muRange=(1,20),
+        numImages=2, cadence=5, epochs=50, bands=['F140W','F105W','F160W'],
+        gain=1000., skynoiseRange=(1,5), mjdRange=None, zpsys='ab', zp=None,
+        microlensing=False, cc_av=.9, ia_av=.3, dust='CCM89Dust',
+        screenz=None, screenebv=None, effect_frames=['rest','free'],
+        effect_names=['host','screen'], minsnr=0.0, av_host=.3, z_lens=None,
+        av_lens=None, scatter=True):
+    """Generate a multiply-imaged SN light curve set, with time delays and
+    magnifications drawn randomly from user-defined ranges.
+    """
+    time_delays = list(np.random.uniform(timeDelayRange[0], timeDelayRange[1],
+                                         numImages))
+    magnifications = list(np.random.uniform(muRange[0], muRange[1],
+                                            numImages))
+    return createMultiplyImagedSN(
+        sourcename, snType, redshift, telescopename=telescopename,
+        objectName='object', time_delays=time_delays,
+        magnifications=magnifications,
+        numImages=numImages, cadence=cadence, epochs=epochs, bands=bands,
+        gain=gain, skynoiseRange=skynoiseRange, mjdRange=mjdRange,
+        zpsys=zpsys, zp=zp, microlensing=microlensing, cc_av=cc_av,
+        ia_av=ia_av, dust=dust, screenz=screenz, screenebv=screenebv,
+        effect_frames=effect_frames, effect_names=effect_names, minsnr=minsnr,
+        av_host=av_host, z_lens=z_lens, av_lens=av_lens, scatter=scatter)
+
+
+
+def createMultiplyImagedSN(
+        sourcename, snType, redshift, telescopename='telescope',
+        objectName='object', time_delays=[0., 20.], magnifications=[1., 5.],
+        numImages=2, cadence=5, epochs=50, bands=['F140W', 'F105W', 'F160W'],
+        gain=1000., skynoiseRange=(1, 5), mjdRange=None, zpsys='ab', zp=None,
+        microlensing=False, cc_av=.9, ia_av=.3, dust='CCM89Dust',
+        screenz=None, screenebv=None, effect_frames=['rest', 'free'],
+        effect_names=['host', 'screen'], minsnr=0.0, av_host=.3, z_lens=None,
+        av_lens=None, scatter=True):
+    """Generate a multiply-imaged SN light curve set, with user-specified time
+    delays and magnifications.
+    """
 
     #TODO sample from dust prior for host and lens-plane dust.
-    obj=curveDict(telescopename=telescopename,object=objectName)
     if not mjdRange:
         now=np.round(Time(datetime.datetime.now()).mjd,3)
         times=np.linspace(now,now+cadence*epochs,epochs)
@@ -41,9 +78,17 @@ def createRandMultiplyImagedSN(sourcename,snType,redshift,telescopename='telesco
     ms=sncosmo.get_magsystem(zpsys)
 
     zpList=[ms.band_flux_to_mag(1,b) for b in bandList] if not zp else [zp for i in range(len(bandList))]
+
+    obj=curveDict(telescopename=telescopename,object=objectName)
+    obj.bands = set(bandList)
     obj.zpDict = dict([(bandList[i], zpList[i]) for i in range(len(bandList))])
     obj.zpsys = zpsys
-    obs=Table({'time':np.tile(times,len(bands)),'band':bandList,'zpsys':[zpsys for i in range(len(bandList))],'zp':zpList,'skynoise':np.random.uniform(skynoiseRange[0],skynoiseRange[1],len(bandList)),'gain':[gain for i in range(len(bandList))]})
+    obs=Table({'time':np.tile(times,len(bands)),
+               'band':bandList, 'zpsys':[zpsys for i in range(len(bandList))],
+               'zp':zpList,
+               'skynoise':np.random.uniform(
+                   skynoiseRange[0],skynoiseRange[1],len(bandList)),
+               'gain':[gain for i in range(len(bandList))]})
 
     absolutes=_getAbsoluteDist()
 
@@ -75,7 +120,8 @@ def createRandMultiplyImagedSN(sourcename,snType,redshift,telescopename='telesco
         effects=[effect_frames]
 
     model=sncosmo.Model(source=sourcename, effects=effects,
-                        effect_names=effect_names, effect_frames=effect_frames)
+                        effect_names=effect_names,
+                        effect_frames=effect_frames)
     model.set(z=redshift)
 
     if z_lens is None:
@@ -129,15 +175,17 @@ def createRandMultiplyImagedSN(sourcename,snType,redshift,telescopename='telesco
     for i in range(numImages):
         model=sncosmo.Model(source=sourcename,effects=effects,effect_names=effect_names,effect_frames=effect_frames)
         tempParams=deepcopy(params)
-        delay=np.random.uniform(timeDelayRange[0],timeDelayRange[-1])
-        mu=np.random.uniform(muRange[0],muRange[-1])
+        delay=time_delays[i]
+        mu=magnifications[i]
         tempParams['t0']+=delay
         if snType=='Ia':
             tempParams['x0']*=mu
         else:
             tempParams['amplitude']*=mu
 
-        lc=sncosmo.realize_lcs(obs,model,[tempParams],trim_observations=True,scatter=False)[0]
+        lc=sncosmo.realize_lcs(obs,model,[tempParams],
+                               trim_observations=True,
+                               scatter=False)[0]
         #do my own scatter, snnosmo's is weird
         for i in range(len(lc)):
             temp=np.random.normal(lc['flux'][i],lc['fluxerr'][i])
@@ -170,9 +218,6 @@ def createRandMultiplyImagedSN(sourcename,snType,redshift,telescopename='telesco
         tempCurve.simMeta['td']=delay
         if microlensing:
             tempCurve.ml=mlCurves
-        # Draw a random magnification and time delay separately for each image
-        mu = np.random.uniform(muRange[0], muRange[-1])
-        delay = np.random.uniform(timeDelayRange[0], timeDelayRange[-1])
 
         # Make a separate model_i for each SN image, so that the magnification
         # can be reflected in the model_i parameters and propagate correctly into

@@ -378,9 +378,14 @@ def nest_combined_lc(curves,model,res,vparam_names,bounds,snBounds,guess_amplitu
 
 
 def _fitSeparate(curves, mods, args, bounds, showfit=False):
+    """Workhorse function for fitting models to light curves, treating
+    each light curve separately and independently.
+    """
     resList=dict([])
     fitDict=dict([])
     #newBounds=dict([])
+    # Step through each of the separate images in turn, finding the best-fit
+    # model from the provided list `mods` and corresponding best-fit params.
     for d in curves.images.keys():
         #print(curves.images[d].simMeta)
         args['curve']=curves.images[d]
@@ -389,12 +394,10 @@ def _fitSeparate(curves, mods, args, bounds, showfit=False):
             fits=[]
             for mod in mods:
                 if mod=='SplineSource':
-
                     fits.append(spline_fit(args))
                 elif mod in ['BazinSource','KarpenkaSource','NewlingSource']:
                     fit,bounds=param_fit(args,mod)
                     fits.append(fit)
-
                 else:
                     fits.append(_fit_data_wrap((mod,args)))
         else:
@@ -475,14 +478,16 @@ def _fitSeparate(curves, mods, args, bounds, showfit=False):
                     fitDict[d][2]=f['res']
                     break
 
-    # TODO : S.R. needs this explained.  Are you running minuit or nestle
-    # first, then overwriting the fit results with nest_lc fitting?  Why?
+    # After running minuit as the first-pass fitter to identify the best
+    # SN light curve model (the one with the min chi2), we then use nestle to
+    # find the best-fit parameters with that model, and explore the
+    # likelihood surface.
     for d in fitDict.keys():
-        _,bestFit,bestMod=fitDict[d]
+        _,bestFit,bestRes=fitDict[d]
         # sncosmo.nest_lc requires user-specified bounds on all parameters that
         # are varied for the fit (except for t0, but we want bounds there also)
         # Here we set these bounds to +-5sigma, using the error from the
-        # last fitting run.
+        # last fitting run for each SN image (each 'curve' object).
         bestFitBounds = {}
         for parname, parval in zip(bestRes.param_names, bestRes.parameters):
             if parname in bestRes.vparam_names:
@@ -503,7 +508,6 @@ def _fitSeparate(curves, mods, args, bounds, showfit=False):
         curves.images[d].fits['res']=nest_res
         #print(curves.images[d].simMeta)
 
-
     joint=_joint_likelihood(resList,verbose=True)
     for p in joint.keys():
         for d in curves.images.keys():
@@ -514,11 +518,14 @@ def _fitSeparate(curves, mods, args, bounds, showfit=False):
             #print(curves.images[d].fits.model._source.t0)
     if showfit:
         for d in curves.images.keys():
-            sncosmo.plot_lc(curves.images[d].table,model=curves.images[d].fits.model,errors=curves.images[d].fits.res)
+            sncosmo.plot_lc(curves.images[d].table,
+                            model=curves.images[d].fits.model,
+                            errors=curves.images[d].fits.res)
             #plt.show()
             #plt.close()
 
     return curves
+
 
 def _plot_marginal_pdfs( res, nbins=101, **kwargs):
     """ plot the results of a classification run
