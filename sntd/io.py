@@ -160,157 +160,61 @@ class curveDict(dict):
         self.combined.meta['mu']=mus
         return(self)
 
-    def plot_lc_obs(self, bands='all', showfig=False,
-                    savefig=True, filename='mySN',
-                    orientation='horizontal',
-                    showmodel=False):
-        """Plot the multiply-imaged SN light curve, as observed.
-        Each subplot shows a single-band light curve, for all images of the SN.
 
-        bands: 'all' = plot all bands; or provide a list of strings
-        orientation: 'horizontal' = all subplots are in a single row
+    def plot_lightcurve(self, bands='all', showfig=False,
+                        orientation='horizontal',
+                        showmodel=False, combined=False,
+                        **kwargs):
+        """Plot the multiply-imaged SN light curve.
+        Each subplot shows a single-band light curve, with each image of the SN
+        plotted with a different color and marker.
+        :param bands: 'all' = plot all bands; or provide a list of strings
+        :param orientation: 'horizontal' = all subplots are in a single row
             'vertical' = all subplots are in a single column
-        showmodel: bool,  True = for a simulated SN, show the sncosmo model
-            used to generate it.
+        :param showmodel: str,
+        'sim'= for a simulated SN, overplot the model used to generate it
+        'fit'= overplot the best-fit model
+        None = show no model curves
+
+        :param combined: bool;  True=plot the combined data set, after shifting
+         to account for the best-fit time delay and magnification.
         """
-        if bands == 'all':
-            bands = self.bands
-        nbands = len(bands)
-        if orientation.startswith('v'):
-            ncols = 1
-            nrows = nbands
-        else:
-            ncols = nbands
-            nrows = 1
-
-        # TODO: make this more general
-        colors = ['r', 'g', 'b', 'k']
-        # markers=['.','^','*','8','s','+','D']
-        i = 0
-        # nrows=int(math.ceil(len(bands)/2.))
-        fig, axlist = plt.subplots(nrows=nrows, ncols=ncols,
-                                   sharex=True, sharey=True)
-        if nbands == 1:
-            axlist = [axlist]
-        leg = []
-        for lc in np.sort(list(self.images.keys())):
-            for b, ax in zip(bands, axlist):
-                if b == list(bands)[0]:
-                    leg.append(
-                        ax.errorbar(self.images[lc].table['time'][
-                                        self.images[lc].table['band'] == b],
-                                    self.images[lc].table['flux'][
-                                        self.images[lc].table['band'] == b],
-                                    yerr=self.images[lc].table['fluxerr'][
-                                        self.images[lc].table['band'] == b],
-                                    markersize=4, fmt=colors[i] + '.'))
-                else:
-                    ax.errorbar(self.images[lc].table['time'][
-                                    self.images[lc].table['band'] == b],
-                                self.images[lc].table['flux'][
-                                    self.images[lc].table['band'] == b],
-                                yerr=self.images[lc].table['fluxerr'][
-                                    self.images[lc].table['band'] == b],
-                                markersize=4, fmt=colors[i] + '.')
-                if self.images[lc].ml:
-                    ax.plot(self.images[lc].table['time'][
-                                self.images[lc].table['band'] == b],
-                            self.images[lc].table['flux'][
-                                self.images[lc].table['band'] == b] * \
-                            self.images[lc].ml[b], color=colors[i])
-
-                ax.text(0.95, 0.95, b.upper(), fontsize='large',
-                        transform=ax.transAxes, ha='right', va='top')
-
-                if showmodel and 'td' in self.images[lc].simMeta:
-                    # Plot the underlying model, including dust and lensing
-                    # effects, as a black curve for each simulated SN image
-                    time_model = np.arange(self.images[lc].table['time'].min(),
-                                           self.images[lc].table['time'].max(),
-                                           0.1)
-                    time_shifted = time_model - self.images[lc].simMeta['td']
-                    flux_magnified = self.model.bandflux(
-                        b, time_shifted, self.zpDict[b], self.zpsys) * \
-                                     self.images[lc].simMeta['mu']
-                    ax.plot(time_model, flux_magnified, 'k-')
-                    # import pdb; pdb.set_trace()
-            i += 1
-
-        # if not len(self.bands)%2==0:
-        # fig.delaxes(ax[nrows-1][1])
-        # axlist[nrows-2][1].tick_params(axis='x',labelbottom='on',bottom='on')
-        plt.figlegend(leg, np.sort(list(self.images.keys())), frameon=False,
-                      loc='center right', fontsize='medium', numpoints=1)
-
-        fig.text(0.5, 0.02, r'Observer-frame time (days)', ha='center',
-                 fontsize='large')
-        fig.text(-0.02, .5, 'Integrated Flux (detector counts)', va='center',
-                 rotation='vertical', fontsize='large')
-        # plt.suptitle('Multiply-Imaged SN "'+self.object+'" on the '+self.telescopename,fontsize=18)
-        if savefig:
-            plt.savefig(filename + '.pdf', format='pdf', overwrite=True)
-        if showfig:
-            plt.show()
-        # plt.close()
-        return
-
-    def plot_lc_combined(self, bands='all', showfig=False,
-                         savefig=True, filename='mySN',
-                         orientation='horizontal',
-                         showmodel=False, **kwargs):
-        """Plot the combined light curve of a multiply-imaged SN (i.e., after
-        you have run combine_curves() to apply time delay and magnification
-        shifts to the observed data).
-
-        Each subplot shows a single-band light curve, with all data from all
-        images of the SN.
-
-        bands: 'all' = plot all bands; or provide a list of strings
-        orientation: 'horizontal' = all subplots are in a single row
-            'vertical' = all subplots are in a single column
-        showmodel: str,
-            'sim' for a simulated SN, show the sncosmo model used to create it.
-            'fit' show the best-fit model.
-        """
-        # TODO : do a proper check to see if there are real data in `combined`.
-        #if 'combined' not in self.keys():
-        #    raise ValueError("No combined light curve available. "
-        #          "Try running combine_curves()")
-
         if bands=='all':
-            bands = self.combined.bands
-        if showmodel:
-            model = self.model
-        else:
-            model = None
+            bands = self.bands
 
         if len(self.images.keys())>5:
             colorlist = _COLORLIST15
         else:
             colorlist = _COLORLIST5
         markerlist = ['o', '^', 's', 'd', '*', '8', 's', '+', 'D', '.']
-        # axlist = fig.add_subplots(1,2,1)
         fig, axlist = plt.subplots(nrows=1, ncols=3,
-                                   sharex=True, sharey=True)
+                                   sharex='all', sharey='all')
         for imname,marker,color in zip(self.images.keys(),markerlist,colorlist):
-            ithisim = np.where(self.combined.table['object']==imname)
-            thisim_table = self.combined.table[ithisim]
-            #ax1 = axlist[0]
-            #testplot(thisim_table, ax1, marker, color)
+            if combined:
+                ithisim = np.where(self.combined.table['object'] == imname)
+                thisim_table = self.combined.table[ithisim]
+                if showmodel=='fit':
+                    model = self.model
+                elif showmodel=='sim':
+                    model = self.images[imname].simMeta['model']
+                else:
+                    model = None
+            else:
+                thisim_table = self.images[imname].table
+                if showmodel=='sim':
+                    model = self.images[imname].simMeta['model']
+                elif showmodel=='fit':
+                    model = self.images[imname].model
+                else:
+                    model = None
             plot_lc(thisim_table, bands=bands, marker=marker,
                     color=color,
                     axlist=axlist, showfig=False, savefig=False,
-                    filename=filename, orientation=orientation,
+                    filename=None, orientation=orientation,
                     model=model, zp=self.zpDict, zpsys=self.zpsys,
                     **kwargs)
-
         if showfig:
             plt.show()
-
-        # TODO : make a plot legend?
-        #plt.figlegend(leg, np.sort(list(self.images.keys())), frameon=False,
-        #              loc='center right', fontsize='medium', numpoints=1)
-
         return
 
 

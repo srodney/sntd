@@ -12,8 +12,9 @@ lcs = simulation.createMultiplyImagedSN(
     microlensing=False)
 ifig = 0
 print("Simulated strongly lensed SN \n")
-lcs.plot_lc_obs(bands=['bessellb', 'bessellv', 'bessellr'],
-                showmodel=True, showfig=True, savefig=False)
+
+lcs.plot_lightcurve(bands=['bessellb', 'bessellv', 'bessellr'],
+                    combined=False, showmodel='sim', showfig=True)
 for k in lcs.images.keys():
     print("image {} t0={}".format(k, lcs.images[k].simMeta['t0']))
 
@@ -30,5 +31,7 @@ A_s2 = lcs_tdfit.images['S2'].fits.model.get('amplitude')
 lcs.combine_curves(tds={'S1':1,'S2':t0_s2-t0_s1},
                    mus={'S1':1,'S2':A_s2/A_s1})
 
-lcs.plot_lc_combined(bands=['bessellb', 'bessellv', 'bessellr'],
-                     showmodel=True, showfig=True, savefig=False)
+#lcs.plot_lc_combined(bands=['bessellb', 'bessellv', 'bessellr'],
+#                     showmodel=True, showfig=True, savefig=False)
+lcs.plot_lightcurve(bands=['bessellb', 'bessellv', 'bessellr'],
+                    combined=True, showmodel='fit', showfig=True)
