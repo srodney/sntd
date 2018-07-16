@@ -24,9 +24,20 @@ __all__=['curve','curveDict','read_data','write_data','table_factory','factory']
 _comment_char={'#'}
 _meta__={'@','$','%','!','&'}
 
+def _sntd_deepcopy(obj):
+    newCurve=curveDict()
+    for k in obj:
+        setattr(newCurve,k,obj[k])
+    return(newCurve)
 
 class curveDict(dict):
     #todo document this class
+
+    def __deepcopy__(self, memo):
+        return deepcopy(dict(self))
+
+
+
     def __init__(self,telescopename="Unknown",object="Unknown"):
         """
         Constructor for curveDict class. Inherits from the dictionary class,
@@ -73,6 +84,7 @@ class curveDict(dict):
     __getattr__ = dict.__getitem__
 
 
+
     def __getstate__(self):
         """
         A function necessary for pickling
@@ -113,8 +125,10 @@ class curveDict(dict):
     def add_curve(self,myCurve):
 
         self.bands.update([x for x in myCurve.bands if x not in self.bands])
-        im='S'+str(len(self.images)+1)
-        myCurve.table.add_column(Column([im for i in range(len(myCurve.table))],name='object'))
+        if not myCurve.object:
+            myCurve.object='S'+str(len(self.images)+1)
+
+        myCurve.table.add_column(Column([myCurve.object for i in range(len(myCurve.table))],name='object'))
 
         if not myCurve.zpsys:
             myCurve.zpsys=myCurve.table['zpsys'][0]
@@ -127,7 +141,7 @@ class curveDict(dict):
         tempCurve=deepcopy(myCurve)
 
 
-        self.images[im]=myCurve
+        self.images[myCurve.object]=myCurve
 
         if self.table:
             for row in tempCurve.table:
@@ -151,7 +165,7 @@ class curveDict(dict):
             #print('True mu:'+str(self.images[k].simMeta['mu']/self.images['S3'].simMeta['mu']))
             #print('True td: '+str(self.images[k].simMeta['td']-self.images['S3'].simMeta['td']))
             temp=deepcopy(self.images[k].table)
-            temp['time']-=tds[k]
+            temp['time']+=tds[k]
             temp['flux']/=mus[k]
 
             self.combined.table=vstack([self.combined.table,temp])
@@ -184,7 +198,7 @@ class curveDict(dict):
         :param combined: bool;  True=plot the combined data set, after shifting
          to account for the best-fit time delay and magnification.
         """
-        if bands=='all':
+        if bands == 'all':
             bands = self.bands
 
         if len(self.images.keys())>5:
@@ -254,6 +268,8 @@ class curve(object):
     astropy.table.Table version of the data file for SNCosmo commands and flux/fluxerr
     arrays.
     """
+
+
     def __init__(self,zp=None,zpsys=None):
         #todo: implement more general read and write functions
         """
@@ -306,6 +322,7 @@ class curve(object):
         self.simMeta=dict([])
 
         self.fits=None
+
 
     def calcmagshiftfluxes(self,inverse=False):
         """
@@ -575,7 +592,7 @@ class curve(object):
         outfile.close()
         print("Wrote %s into %s." % (str(self), filename))
 
-def table_factory(table,band,telescopename="Unknown",object="Unknown",verbose=False):
+def table_factory(table,telescopename="Unknown",object=None,verbose=False):
     #todo finish documenting this function
     """
     This function will create a new curve object using an astropy table.
@@ -588,28 +605,54 @@ def table_factory(table,band,telescopename="Unknown",object="Unknown",verbose=Fa
     """
     newlc=curve()
 
+
+    table=standardize_table_colnames(table)
     newlc.jds = np.asarray(table[_get_default_prop_name('time')])
-    newlc.mags = np.asarray(table[_get_default_prop_name('mag')])
-    newlc.magerrs = np.asarray(table[_get_default_prop_name('magerr')])
-    newlc.fluxes = np.asarray(table[_get_default_prop_name('flux')])
-    newlc.fluxerrs = np.asarray(table[_get_default_prop_name('fluxerr')])
+    newlc.bands={x for x in table[_get_default_prop_name('band')]}
     newlc.zp = {x for x in table[_get_default_prop_name('zp')]}
     newlc.zpsys={x for x in table[_get_default_prop_name('zpsys')]}
+    if 'mag' not in table.colnames:
+        newlc.mags=False
+    else:
+        newlc.mags=True
+    #    newlc.mags = np.asarray(table[_get_default_prop_name('mag')])
+    #    newlc.magerrs = np.asarray(table[_get_default_prop_name('magerr')])
+    #else:
+    #    newlc.mags=None
+    if 'flux' not in table.colnames:
+        newlc.fluxes=False
+    else:
+        newlc.fluxes=True
+    #    newlc.fluxes = np.asarray(table[_get_default_prop_name('flux')])
+    #    newlc.fluxerrs = np.asarray(table[_get_default_prop_name('fluxerr')])
+    #else:
+    #    newlc.fluxes=None
+    #if newlc.mags is None:
+    #   if newlc.fluxes is None:
+    #        raise RuntimeError("Need mag or flux in table.")
+    #    else:
+    #        ms=newlc.
+    #        newlc.mags=
+
+
+
     if len(newlc.zp)>1:
-        raise(RuntimeError,"zero point not consistent across band: %s"%band)
+        raise(RuntimeError,"zero point not consistent across band: %s"%newlc.bands)
     if len(newlc.zpsys)>1:
-        raise(RuntimeError,"zero point system not consistent across band: %s"%band)
+        raise(RuntimeError,"zero point system not consistent across band: %s"%newlc.bands)
     newlc.zpsys=newlc.zpsys.pop()
     newlc.zp = newlc.zp.pop()
 
-    newlc.band=band
+    #newlc.band=band
+    #if newlc.mags:
+    #    table.mask = table['magerr'] >= 0.0  # This should be true for all !
+    #if newlc.fluxes:
+    #    table.mask = table['fluxerr'] >= 0.0  # This should be true for all !    newlc.table=table
 
-    if len(newlc.jds) != len(newlc.mags) or len(newlc.jds) != len(newlc.magerrs) or len(newlc.jds) != len(
-            newlc.fluxes) or len(newlc.jds) != len(newlc.fluxerrs):
-        raise (RuntimeError, "lightcurve factory called with arrays of incoherent lengths")
 
-    newlc.mask = newlc.magerrs >= 0.0  # This should be true for all !
-    newlc.mask = newlc.fluxes >= 0.0  # This should be true for all !    newlc.table=table
+
+
+
 
     newlc.table=table
 
@@ -618,12 +661,12 @@ def table_factory(table,band,telescopename="Unknown",object="Unknown",verbose=Fa
     newlc.telescopename = telescopename
     newlc.object = object
 
-    newlc.setindexlabels()
+    #newlc.setindexlabels()
     newlc.commentlist = []
 
-    newlc.sort()  # not sure if this is needed / should be there
+    #newlc.table.sort()  # not sure if this is needed / should be there
 
-    newlc.validate()
+    #newlc.validate()
 
     if verbose: print("New lightcurve %s with %i points" % (str(newlc), len(newlc.jds)))
 
@@ -759,9 +802,11 @@ def _col_check(colnames):
     flux_to_mag=False
     mag_to_flux=False
     if len(colnames & set(_props.keys())) != len(_props.keys()):
-        temp_missing=[x for x in _props.keys() if x not in [_get_default_prop_name(y) for y in ['flux','fluxerr','mag','magerr']] and x not in colnames]
-        if len(temp_missing) !=0:
-            raise RuntimeError("Missing required data, or else column name is not in default list: {0}".format(', '.join(temp_missing)))
+        #temp_missing=[x for x in _props.keys() if x not in [_get_default_prop_name(y) for y in ['flux','fluxerr','mag','magerr']] and x not in colnames]
+
+        #if len(temp_missing) !=0:
+
+        #    raise RuntimeError("Missing required data, or else column name is not in default list: {0}".format(', '.join(temp_missing)))
         temp_flux = {_get_default_prop_name(x) for x in ['flux', 'fluxerr']}
         temp_mag = {_get_default_prop_name(x) for x in ['mag', 'magerr']}
         if len(temp_flux & colnames) != len(temp_flux):
@@ -773,6 +818,12 @@ def _col_check(colnames):
             flux_to_mag = True
     return flux_to_mag,mag_to_flux
 
+
+def standardize_table_colnames(table):
+    for col in table.colnames:
+        if col != _get_default_prop_name(col.lower()):
+            table.rename_column(col, _get_default_prop_name(col.lower()))
+    return table
 
 def _read_data(filename,telescopename,object,**kwargs):
     if not object:
@@ -786,7 +837,13 @@ def _read_data(filename,telescopename,object,**kwargs):
             if col != _get_default_prop_name(col.lower()):
                 table.rename_column(col, _get_default_prop_name(col.lower()))
     except:
-        table = Table(masked=True)
+        try:
+            table = ascii.read(filename, masked=True,**kwargs)
+            for col in table.colnames:
+                if col != _get_default_prop_name(col.lower()):
+                    table.rename_column(col, _get_default_prop_name(col.lower()))
+        except:
+            table = Table(masked=True)
 
     delim = kwargs.get('delim', None)
     #curves=curveDict()
