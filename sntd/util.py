@@ -307,3 +307,20 @@ def which(program):
                 return exe_file
 
     return None
+
+def ismicrolensing(sncosmo_effect):
+    """Check if the given sncosmo PropagationEffect is one of the microlensing
+    effects (AchromaticSplineMicrolensing, ChromaticSplineMicrolensing,
+    ChromaticMicrolensing)
+    """
+    if isinstance(sncosmo_effect, sncosmo.models.AchromaticMicrolensing):
+        return True
+    if isinstance(sncosmo_effect, sncosmo.models.ChromaticSplineMicrolensing):
+        return True
+    if isinstance(sncosmo_effect, sncosmo.models.AchromaticSplineMicrolensing):
+        return True
+    if not isinstance(sncosmo_effect, sncosmo.models.PropagationEffect):
+        print("WARNING: %s is not an sncosmo PropagationEffect"%\
+              str(sncosmo_effect))
+        return False
+    return False

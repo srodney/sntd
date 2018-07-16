@@ -12,6 +12,7 @@ from scipy.stats import mode
 from sncosmo import get_magsystem
 from copy import deepcopy
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1.axes_divider import make_axes_locatable
 from .plotting import plot_lc, testplot, _COLORLIST15, _COLORLIST5
 
 from .util import *
@@ -163,8 +164,8 @@ class curveDict(dict):
 
     def plot_lightcurve(self, bands='all', showfig=False,
                         orientation='horizontal',
-                        showmodel=False, combined=False,
-                        **kwargs):
+                        showmodel=False, showmicrolensing=False,
+                        combined=False, **kwargs):
         """Plot the multiply-imaged SN light curve.
         Each subplot shows a single-band light curve, with each image of the SN
         plotted with a different color and marker.
@@ -175,7 +176,11 @@ class curveDict(dict):
         'sim'= for a simulated SN, overplot the model used to generate it
         'fit'= overplot the best-fit model
         None = show no model curves
-
+        :param showmicrolensing: str,
+        'sim'= for a simulated SN, plot the 'true' microlensing curve
+        'fit'= plot the residuals after subtracting the model, which are partly
+        due to uncorrected microlensing.
+        None = show no microlensing curves
         :param combined: bool;  True=plot the combined data set, after shifting
          to account for the best-fit time delay and magnification.
         """
@@ -187,8 +192,19 @@ class curveDict(dict):
         else:
             colorlist = _COLORLIST5
         markerlist = ['o', '^', 's', 'd', '*', '8', 's', '+', 'D', '.']
-        fig, axlist = plt.subplots(nrows=1, ncols=3,
+
+        fig, axlist = plt.subplots(nrows=1, ncols=len(bands),
                                    sharex='all', sharey='all')
+        if not np.iterable(axlist):
+            axlist = [axlist]
+        if showmicrolensing:
+            axlistml = []
+            for ax in axlist:
+                ax_divider = make_axes_locatable(ax)
+                ax_ml = ax_divider.append_axes("bottom", size="25%", pad=0)
+                axlistml.append(ax_ml)
+            axlist = [[ax,axml] for ax,axml in zip(axlist,axlistml)]
+
         for imname,marker,color in zip(self.images.keys(),markerlist,colorlist):
             if combined:
                 ithisim = np.where(self.combined.table['object'] == imname)
@@ -213,11 +229,18 @@ class curveDict(dict):
                     model = showmodel
                 else:
                     model = None
+            if showmicrolensing=='sim':
+                microlensing = self.images[imname].simMeta['microlensing']
+            else:
+                #TODO : add showmicrolensing=='fit' option
+                microlensing = None
+
             plot_lc(thisim_table, bands=bands, marker=marker,
                     color=color,
                     axlist=axlist, showfig=False, savefig=False,
                     filename=None, orientation=orientation,
-                    model=model, zp=self.zpDict, zpsys=self.zpsys,
+                    model=model, microlensing=microlensing,
+                    zp=self.zpDict, zpsys=self.zpsys,
                     **kwargs)
         if showfig:
             plt.show()

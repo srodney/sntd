@@ -223,6 +223,7 @@ def createMultiplyImagedSN(
         curve_i.simMeta['lensz']=z_lens
         curve_i.simMeta['mu']=mu
         curve_i.simMeta['td']=td
+        curve_i.simMeta['microlensing'] = ml_effect
         curve_i.simMeta['microlensing_type'] = microlensing_type
         curve_i.simMeta['microlensing_params'] = microlensing_params
         obj.add_curve(curve_i)

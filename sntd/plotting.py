@@ -1,6 +1,7 @@
 import os
 import math
 import matplotlib.pyplot as plt
+
 import numpy as np
 from . import util
 import sncosmo
@@ -730,20 +731,24 @@ def display(lclist=[], splist=[],
 
 def plot_lc(table, bands='all', axlist=None,
             showfig=False, savefig=True, filename='mySN',
-            orientation='horizontal', model=None, zp=25., zpsys='ab',
-            **kwargs):
+            orientation='horizontal', zp=25., zpsys='ab',
+            model=None, microlensing=None, **kwargs):
     """Plot the SN light curve given in `table.`
     Each subplot shows a single-band light curve.  Optionally overlay the
     provided `model`.
 
     :param bands: 'all' = plot all bands; or provide a list of strings
-    :param axlist: list of same length as bands, giving matplotlib axis objects
-    to plot each single-band light curve into.
+    :param axlist: list.  Same length as bands, giving matplotlib axis objects
+    to plot each single-band light curve into.  If showmicrolensing==True,
+    each entry should be a tuple or list, giving the axis for the main
+    light curve as the first value, and the microlensing axis as the second.
     :param orientation: 'horizontal' = all subplots are in a single row
         'vertical' = all subplots are in a single column
         (ignored if axlist is provided)
     :param model: an sncosmo model object, which can provide the flux vs time
     for every band in `bands`.
+    :param microlensing: an sncosmo microlensing PropagationEffect object,
+    which can provide the flux vs time for every band in `bands`.
     :param zp: dict or float. If a float, the same zp is applied to all bands.
     If a dict, keyed by bandpass name, with zp as value.
     :param zpsys: 'ab' or 'vega'
@@ -765,8 +770,6 @@ def plot_lc(table, bands='all', axlist=None,
                                    sharex='all', sharey='all')
     if not np.iterable(axlist):
         axlist = [axlist]
-    if nbands == 1:
-        axlist = [axlist]
     if nbands>5:
         colors = _COLORLIST15
     else:
@@ -779,6 +782,12 @@ def plot_lc(table, bands='all', axlist=None,
             zpthisband = zp[b]
         else:
             zpthisband = zp
+
+        if microlensing:
+            ax_ml = ax[1]
+            ax = ax[0]
+        else:
+            ax_ml = ax
 
         # TODO : guard against user providing keyword aliases
         plotargs = {'color':c, 'marker':m, 'ls':' '}
@@ -797,21 +806,44 @@ def plot_lc(table, bands='all', axlist=None,
         if model:
             # Plot the underlying model, including dust and lensing
             # effects, as a black curve for each simulated SN image
-            time_model = np.arange(table['time'].min(),
-                                   table['time'].max(),
-                                   0.1)
+            time_model = np.arange(
+                table['time'].min(), table['time'].max(), 0.1)
             flux_model = model.bandflux(b, time_model, zpthisband, zpsys)
             ax.plot(time_model, flux_model, 'k-')
+            ax.set_ylabel('Flux (detector counts)')
+            if microlensing:
+                time_ml = np.arange(
+                    table['time'].min(), table['time'].max(), 0.1)
+
+                # To directly plot microlensing magnification, we feed the
+                # propagation effect an array of ones to represent flux
+                flux_ml = np.ones(len(time_ml))
+                tmin_model = model.mintime()
+                tmax_model = model.maxtime()
+                zpar_index = model.param_names.index('z')
+                z_model = model.parameters[zpar_index]
+                phase_ml = (time_ml - tmin_model)/(1 + z_model)
+                phaserange_model = (tmax_model - tmin_model)/(1+z_model)
+                phasefraction_ml = phase_ml / phaserange_model
+                wave_band = sncosmo.get_bandpass(b).wave_eff
+                mu_ml = microlensing.propagate(wave_band, flux_ml,
+                                               phasefraction_ml)
+                mlplotargs = {'marker': ' ', 'ls': '-'}
+                plotargs.update(**mlplotargs)
+                ax_ml.plot(time_ml, mu_ml, **plotargs)
+                ax_ml.set_ylabel('$\mu$')
+                ax_ml.set_xlabel('Observer-frame time (days)')
 
     # TODO : make a legend
     #plt.figlegend(leglist, , frameon=False,
     #              loc='center right', fontsize='medium', numpoints=1)
 
+    '''
     # hidden whole-figure axes for shared x- and y-labels.
     fig = plt.gcf()
-    fig.subplots_adjust(left=0.15, bottom=0.15, right=0.95, top=0.95,
+    fig.subplots_adjust(left=0.15, bottom=0.25, right=0.95, top=0.95,
                         hspace=0.1, wspace=0.0)
-    wholefigaxes = fig.add_axes([0.02,0.15,0.9,0.82], frameon=False)
+    wholefigaxes = fig.add_axes([0.02,0.02,0.9,0.9], frameon=False)
     wholefigaxes.set_xticks([])
     wholefigaxes.set_yticks([])
     wholefigaxes.text(0.5, 0.0, r'Observer-frame time (days)', ha='center',
@@ -819,6 +851,7 @@ def plot_lc(table, bands='all', axlist=None,
     wholefigaxes.text(-0.02, .5, 'Flux', va='center',
              rotation='vertical', fontsize='large',
              transform=wholefigaxes.transAxes)
+    '''
     if savefig:
         plt.savefig(filename + '.pdf', format='pdf', overwrite=True)
     if showfig:
