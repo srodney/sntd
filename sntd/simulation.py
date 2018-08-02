@@ -6,7 +6,7 @@ from astropy.io import ascii
 from copy import deepcopy
 
 from .util import __dir__
-from .io import curve,curveDict
+from .lightcurves import curve,curveDict
 from .ml import getDiffCurve
 
 __all__=['createRandMultiplyImagedSN']
@@ -80,9 +80,9 @@ def createMultiplyImagedSN(
     """
     if not mjdRange:
         now=np.round(Time(datetime.datetime.now()).mjd,3)
-        times=np.linspace(now,now+cadence*epochs,epochs)
+        times=np.arange(now,now+cadence*epochs,cadence)
     else:
-        times=np.linspace(mjdRange[0],mjdRange[-1],epochs)
+        times=np.arange(mjdRange[0],mjdRange[-1],cadence)
     bandList=np.array([np.tile(b,len(times)) for b in bands]).flatten()
     ms=sncosmo.get_magsystem(zpsys)
 

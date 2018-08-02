@@ -179,7 +179,7 @@ class curveDict(dict):
     def plot_lightcurve(self, bands='all', showfig=False,
                         orientation='horizontal',
                         showmodel=False, showmicrolensing=False,
-                        combined=False, **kwargs):
+                        combined=False, axlist=None, **kwargs):
         """Plot the multiply-imaged SN light curve.
         Each subplot shows a single-band light curve, with each image of the SN
         plotted with a different color and marker.
@@ -207,16 +207,22 @@ class curveDict(dict):
             colorlist = _COLORLIST5
         markerlist = ['o', '^', 's', 'd', '*', '8', 's', '+', 'D', '.']
 
-        fig, axlist = plt.subplots(nrows=1, ncols=len(bands),
-                                   sharex='all', sharey='all')
+        nbands = len(bands)
+        if axlist is None:
+            fig, axlist = plt.subplots(nrows=1, ncols=nbands,
+                                       sharex='all', sharey='all')
         if not np.iterable(axlist):
             axlist = [axlist]
         if showmicrolensing:
-            axlistml = []
-            for ax in axlist:
-                ax_divider = make_axes_locatable(ax)
-                ax_ml = ax_divider.append_axes("bottom", size="25%", pad=0)
-                axlistml.append(ax_ml)
+            if len(axlist) == 2 * nbands:
+                axlistml = axlist[nbands:]
+                axlist = axlist[:nbands]
+            else:
+                axlistml = []
+                for ax in axlist:
+                    ax_divider = make_axes_locatable(ax)
+                    ax_ml = ax_divider.append_axes("bottom", size="25%", pad=0)
+                    axlistml.append(ax_ml)
             axlist = [[ax,axml] for ax,axml in zip(axlist,axlistml)]
 
         for imname,marker,color in zip(self.images.keys(),markerlist,colorlist):
@@ -249,13 +255,14 @@ class curveDict(dict):
                 #TODO : add showmicrolensing=='fit' option
                 microlensing = None
 
-            plot_lc(thisim_table, bands=bands, marker=marker,
-                    color=color,
+            plotargs ={'color':color, 'marker':marker}
+            plotargs.update(**kwargs)
+            plot_lc(thisim_table, bands=bands,
                     axlist=axlist, showfig=False, savefig=False,
                     filename=None, orientation=orientation,
                     model=model, microlensing=microlensing,
                     zp=self.zpDict, zpsys=self.zpsys,
-                    **kwargs)
+                    **plotargs)
         if showfig:
             plt.show()
         return
@@ -281,6 +288,11 @@ class curve(object):
         """
         #todo populate param documentation
         super(curve,self).__init__()
+        self.object = ''
+        """@type: str
+            @ivar: The name of the object that generated this light-curve, i.e.
+            the name of the source or identifier of the SN image.
+        """
         self.meta = {'info': ''}
         """@type: dict
             @ivar: The metadata for the curveDict object, intialized with an empty "info" key value pair. It's

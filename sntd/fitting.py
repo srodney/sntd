@@ -10,7 +10,7 @@ import nestle
 from collections import OrderedDict
 
 from .util import *
-from .io import _sntd_deepcopy,table_factory
+from .lightcurves import _sntd_deepcopy,table_factory
 from .spl import spl
 from .plotting import display
 from . import models
