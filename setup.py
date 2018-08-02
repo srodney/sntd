@@ -18,7 +18,7 @@ metadata = dict(conf.items('metadata'))
 PACKAGENAME = metadata.get('package_name', 'sntd')
 DESCRIPTION = metadata.get('description', 'Lensed SN time delay fitting and simulation.')
 AUTHOR = metadata.get('author', 'Justin Roberts-Pierel, Steven Rodney')
-AUTHOR_EMAIL = metadata.get('author_email', '')
+AUTHOR_EMAIL = metadata.get('jr23@email.sc.edu', '')
 LICENSE = metadata.get('license', 'unknown')
 URL = metadata.get('url', 'http://astropy.org')
 __minimum_python_version__ = metadata.get("minimum_python_version", "2.7")
@@ -131,7 +131,6 @@ package_info['package_data'][PACKAGENAME].extend(c_files)
 # Note that requires and provides should not be included in the call to
 # ``setup``, since these are now deprecated. See this link for more details:
 # https://groups.google.com/forum/#!topic/astropy-dev/urYO8ckB2uM
-
 setup(name=PACKAGENAME,
       version=VERSION,
       description=DESCRIPTION,

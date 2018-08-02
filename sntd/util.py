@@ -68,26 +68,37 @@ def _guess_magnifications(curves):
 def colorFit(lcs,verbose=True):
     colors=combinations(lcs.bands,2)
 
-
     allDelays=[]
     for col in colors:
+
+        col=np.sort(col)
         curves=dict([])
         for d in np.sort(lcs.images.keys()):
+            print(d)
+            dcurve=lcs.images[d]
+            tempCurve1=dcurve.table[dcurve.table['band']==col[0]]
+            ind0=np.where(tempCurve1['flux']==np.max(tempCurve1['flux']))[0][0]
+            #ind0=np.where(dcurve.table['flux'][dcurve.table['band']==col[0]]==np.max(dcurve.table['flux'][dcurve.table['band']==col[0]]))[0][0]
+            ind0min=max(ind0-6,0)
+            ind0max=min(ind0+6,len(tempCurve1)-1)
+            tempCurve2=dcurve.table[dcurve.table['band']==col[1]]
+
+            ind1min=np.where(tempCurve2['time']>=tempCurve1['time'][ind0min])[0][0]
+            ind1max=np.where(tempCurve2['time']<=tempCurve1['time'][ind0max])[0][-1]
+            spl1=splrep(tempCurve1['time'][ind0min:ind0max+1],tempCurve1['flux'][ind0min:ind0max+1],s=len(tempCurve1),k=2)
+            spl2=splrep(tempCurve2['time'][ind1min:ind1max+1],tempCurve2['flux'][ind1min:ind1max+1],s=len(tempCurve2),k=2)
+            #time=np.linspace(max(np.min(dcurve.table['time'][dcurve.table['band']==col[0]][ind0min:ind0max+1]),np.min(dcurve.table['time'][dcurve.table['band']==col[1]][ind1min:ind1max+1])),
+            #                 min(np.max(dcurve.table['time'][dcurve.table['band']==col[0]][ind0min:ind0max+1]),np.max(dcurve.table['time'][dcurve.table['band']==col[1]][ind1min:ind1max+1])),500)
+            time=np.linspace(min(np.min(dcurve.table['time'][dcurve.table['band']==col[0]][ind0min:ind0max+1]),np.min(dcurve.table['time'][dcurve.table['band']==col[1]][ind1min:ind1max+1])),
+                                              max(np.max(dcurve.table['time'][dcurve.table['band']==col[0]][ind0min:ind0max+1]),np.max(dcurve.table['time'][dcurve.table['band']==col[1]][ind1min:ind1max+1])),500)
+            ccurve=splev(time,spl1)/splev(time,spl2)
             figure=plt.figure()
             ax=figure.gca()
-            dcurve=lcs.images[d]
-            ind0=np.argmax(dcurve.table['flux'][dcurve.table['band']==col[0]])
-            ind0min=max(ind0-10,0)
-            ind0max=min(ind0+10,len(dcurve.table['flux'][dcurve.table['band']==col[0]])-1)
-            ind1=np.argmax(dcurve.table['flux'][dcurve.table['band']==col[1]])
-            ind1min=max(ind1-10,0)
-            ind1max=min(ind1+10,len(dcurve.table['flux'][dcurve.table['band']==col[1]])-1)
-            spl1=splrep(dcurve.table['time'][dcurve.table['band']==col[0]][ind0min:ind0max+1],dcurve.table['flux'][dcurve.table['band']==col[0]][ind0min:ind0max+1])
-            spl2=splrep(dcurve.table['time'][dcurve.table['band']==col[1]][ind1min:ind1max+1],dcurve.table['flux'][dcurve.table['band']==col[1]][ind1min:ind1max+1])
-            time=np.linspace(max(np.min(dcurve.table['time'][dcurve.table['band']==col[0]]),np.min(dcurve.table['time'][dcurve.table['band']==col[1]])),
-                             min(np.max(dcurve.table['time'][dcurve.table['band']==col[0]]),np.max(dcurve.table['time'][dcurve.table['band']==col[1]])),500)
-            ccurve=splev(time,spl1)/splev(time,spl2)
-            ax.plot(time,ccurve)
+            ax.plot(time,splev(time,spl1))
+            ax.scatter(dcurve.table['time'][dcurve.table['band']==col[0]][ind0min:ind0max+1],dcurve.table['flux'][dcurve.table['band']==col[0]][ind0min:ind0max+1])
+            ax.plot(time,splev(time,spl2))
+            ax.scatter(dcurve.table['time'][dcurve.table['band']==col[1]][ind1min:ind1max+1],dcurve.table['flux'][dcurve.table['band']==col[1]][ind1min:ind1max+1])
+            #ax.plot(time,ccurve)
             plt.show()
             plt.close()
             #curves.append(dcurve.table['flux'][dcurve.table['band']==col[0]]-dcurve.table['flux'][dcurve.table['band']==col[1]])
@@ -97,6 +108,8 @@ def colorFit(lcs,verbose=True):
 
         delays=dict([])
         for k in np.sort(curves.keys()):
+            if k=='S1' or k=='S3':
+                continue
             print(k)
             time,curve=curves[k]
             maxValue,flux=_findMax(time,curve)

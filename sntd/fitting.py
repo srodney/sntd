@@ -16,8 +16,8 @@ from .plotting import display
 from . import models
 __all__=['fit_data','colorFit','spline_fit']
 
-__thetaSN__=['z','hostebv','screenebv','screenz','rise','fall','sigma','k']
-__thetaL__=['t0','amplitude','dt0','A','B','t1','psi','phi','s']
+__thetaSN__=['z','hostebv','screenebv','screenz','rise','fall','sigma','k','x1','c']
+__thetaL__=['t0','amplitude','dt0','A','B','t1','psi','phi','s','x0']
 
 
 _needs_bounds={'z'}
@@ -102,7 +102,7 @@ class fits(dict):
 
 
 
-def fit_data(lcs, snType='Ia',bands=None,method='minuit', models=None, params=None, bounds=None, ignore=None, constants=None,
+def fit_data(lcs, snType='Ia',bands=None,method='minuit', models=None, params=None, bounds={}, ignore=None, constants=None,
              spline=False, poly=False,micro='spline',combined_or_separate='separate',combinedGrids=None, **kwargs):
     """
     The main, high-level fitting function.
@@ -147,6 +147,7 @@ def fit_data(lcs, snType='Ia',bands=None,method='minuit', models=None, params=No
     #sets the bands to user's if defined (set, so that they're unique), otherwise to all the bands that exist in curves
     args['bands'] = set(bands) if bands else curves.bands
 
+
     args['constants']=constants
     args['effect_names']=kwargs.get('effect_names',[])
     args['effect_frames']=kwargs.get('effect_frames',[])
@@ -159,6 +160,7 @@ def fit_data(lcs, snType='Ia',bands=None,method='minuit', models=None, params=No
     args['flip']=kwargs.get('flip',False)
     args['guess_amp']=kwargs.get('guess_amplitude',True)
     args['combinedError']=kwargs.get('combinedError',None)
+    args['showPlots']=kwargs.get('showPlots',False)
     if not models:
         allmodels,alltypes=np.loadtxt(
             os.path.join(__dir__,'data','sncosmo','models.ref'),
@@ -613,13 +615,21 @@ def _fitSeparate(curves, mods, args, bounds, showfit=False):
     for d in curves.images.keys():
         #print(curves.images[d].simMeta)
         args['curve']=copy(curves.images[d])
-        if 't0' in args['bounds'] and args['t0_guess'] is not None:
-            args['bounds']['t0']=(t0Bounds[0]+args['t0_guess'][d],t0Bounds[1]+args['t0_guess'][d])
+        for b in [x for x in np.unique(args['curve'].table['band']) if x not in args['bands']]:
+            args['curve'].table=args['curve'].table[args['curve'].table['band']!=b]
+
+        if 't0' in args['bounds']:
+            if args['t0_guess'] is not None:
+                args['bounds']['t0']=(t0Bounds[0]+args['t0_guess'][d],t0Bounds[1]+args['t0_guess'][d])
+            else:
+                maxFlux=np.max(args['curve'].table['flux'])
+                maxTime=args['curve'].table['time'][args['curve'].table['flux']==maxFlux]
+                args['bounds']['t0']=(t0Bounds[0]+maxTime,t0Bounds[1]+maxTime)
+
         if 'amplitude' in args['bounds'] and args['guess_amp']:
             args['bounds']['amplitude']=(ampBounds[0]*np.max(args['curve'].table['flux']),ampBounds[1]*np.max(args['curve'].table['flux']))
 
-        for b in [x for x in np.unique(args['curve'].table['band']) if x not in args['bands']]:
-            args['curve'].table=args['curve'].table[args['curve'].table['band']!=b]
+
 
         curves.images[d].fits=newDict()
         if len(args['curve'].table)>63 or len(mods)==1 or args['snType']=='Ia':
@@ -632,6 +642,11 @@ def _fitSeparate(curves, mods, args, bounds, showfit=False):
 
 
                 else:
+                    if len(mods)==1:
+                        doFit=False
+                    else:
+                        doFit=True
+                    args['doFit']=doFit
                     fits.append(_fit_data_wrap((mod,args)))
         else:
             fits=pyParz.foreach(mods,_fit_data,args)
@@ -723,16 +738,24 @@ def _fitSeparate(curves, mods, args, bounds, showfit=False):
             tempTable=tempTable[tempTable['band']!=b]
         if args['flip']:
             tempTable['flux']=np.flip(tempTable['flux'],axis=0)
+
+        if 't0' in args['bounds']:
+            if args['t0_guess'] is not None:
+                args['bounds']['t0']=(t0Bounds[0]+args['t0_guess'][d],t0Bounds[1]+args['t0_guess'][d])
+            else:
+                maxFlux=np.max(tempTable['flux'])
+                maxTime=tempTable['time'][tempTable['flux']==maxFlux]
+                args['bounds']['t0']=(t0Bounds[0]+maxTime,t0Bounds[1]+maxTime)
+        if args['snType']=='Ia' and 'x1' not in args['bounds']:
+            args['bounds']['x1']=(-1,1)
+        if 'amplitude' in args['bounds'] and args['guess_amp']:
+            args['bounds']['amplitude']=(ampBounds[0]*np.max(tempTable['flux']),ampBounds[1]*np.max(tempTable['flux']))
         if 'amplitude' not in args['bounds']:
             guess_amp_bounds=True
         else:
             guess_amp_bounds=False
-        if 't0' in args['bounds'] and args['t0_guess'] is not None:
-            args['bounds']['t0']=(t0Bounds[0]+args['t0_guess'][d],t0Bounds[1]+args['t0_guess'][d])
-        if 'amplitude' in args['bounds'] and args['guess_amp']:
-            args['bounds']['amplitude']=(ampBounds[0]*np.max(tempTable['flux']),ampBounds[1]*np.max(tempTable['flux']))
-        nest_res,nest_fit=sncosmo.nest_lc(tempTable,bestFit,vparam_names=bestRes.vparam_names,bounds=args['bounds'],guess_amplitude_bound=guess_amp_bounds,maxiter=None,npoints=200)
-        print(d,nest_res.h)
+        nest_res,nest_fit=sncosmo.nest_lc(tempTable,bestFit,vparam_names=bestRes.vparam_names,bounds=args['bounds'],guess_amplitude_bound=guess_amp_bounds,maxiter=1000,npoints=200)
+        #print(d,nest_res.h)
 
         if nest_res.ndof != len(tempTable)- len(nest_res.vparam_names):
             dofs[d]=len(tempTable)- len(nest_res.vparam_names)
@@ -769,15 +792,26 @@ def _fitSeparate(curves, mods, args, bounds, showfit=False):
             final_vparams=[]
             for p in joint.keys():
                 if isinstance(joint[p],dict):
-                    curves.images[d].fits.model.set(**{p:joint[p][d][0]})
+                    if p=='t0':
+                        bds[p]=(-3+joint[p][d][0],3+joint[p][d][0])
+                    elif p!='amplitude' and p!='x0':
+
+                        if joint[p][d][1]==0 or np.round(joint[p][d][1]/joint[p][d][0],6)==0:
+                            bds[p]=(joint[p][d][0]-.05*joint[p][d][0],joint[p][d][0]+.05*joint[p][d][0])
+                        else:
+                            bds[p]=(joint[p][d][0]-joint[p][d][1],joint[p][d][0]+joint[p][d][1])
+                    errs[p]=joint[p][d][1]
+                    final_vparams.append(p)
+
 
                     #bds[p]=(joint[p][d][0]-joint[p][d][1],joint[p][d][0]+joint[p][d][1])
-                    errs[p]=joint[p][d][1]
+                    #errs[p]=joint[p][d][1]
                 else:
-                    bds[p]=(joint[p][0]-joint[p][1],joint[p][0]+joint[p][1])
+                    curves.images[d].fits.model.set(**{p:joint[p][0]})
                     errs[p]=joint[p][1]
-                    final_vparams.append(p)
-            finalRes,finalFit=sncosmo.fit_lc(tempTable,curves.images[d].fits.model,final_vparams,bounds=bds,guess_amplitude=False,guess_t0=False,maxcall=100)
+                    #final_vparams.append(p)
+            #finalRes,finalFit=sncosmo.fit_lc(tempTable,curves.images[d].fits.model,final_vparams,bounds=bds,guess_amplitude=False,guess_t0=False,maxcall=500)
+            finalRes,finalFit=sncosmo.nest_lc(tempTable,curves.images[d].fits.model,final_vparams,bounds=bds,guess_amplitude_bound=True,maxiter=500)
 
             finalRes.ndof=dofs[d]
             #print(d,finalRes.chisq/finalRes.ndof,stats.chi2.sf(finalRes.chisq,finalRes.ndof),finalRes.chisq,finalRes.ndof)
@@ -804,17 +838,20 @@ def _fitSeparate(curves, mods, args, bounds, showfit=False):
     curves.magnification_errors=mag_errs
     curves.measurements={'t0':times,'A':fluxes,'t0_err':time_errors,'A_err':flux_errors}
 
-    #for d in curves.images.keys():
-    #    tempTable=copy(curves.images[d].table)
-    ##    for b in [x for x in np.unique(tempTable['band']) if x not in args['bands']]:
-     #       tempTable=tempTable[tempTable['band']!=b]
-     #   tempMod=copy(curves.images[d].fits.model)
-     #   tempMod._source._phase=tempMod._source._phase[tempMod._source._phase>=(np.min(tempTable['time'])-tempMod.get('t0'))]
-     #   tempMod._source._phase=tempMod._source._phase[tempMod._source._phase<=(np.max(tempTable['time'])-tempMod.get('t0'))]
-     #   sncosmo.plot_lc(tempTable,model=tempMod,errors=curves.images[d].fits.res.errors,zp=tempTable['zp'][0],zpsys=tempTable['zpsys'][0])
-     #   plt.savefig(nest_fit._source.name+'_'+tempTable['band'][0]+'_refs_'+d+'.pdf',format='pdf',overwrik4ite=True)
-     #   plt.clf()
-     #   plt.close()
+    if args['showPlots']:
+        for d in curves.images.keys():
+            tempTable=copy(curves.images[d].table)
+            for b in [x for x in np.unique(tempTable['band']) if x not in args['bands']]:
+                tempTable=tempTable[tempTable['band']!=b]
+            tempMod=copy(curves.images[d].fits.model)
+
+            tempMod._source._phase=tempMod._source._phase[tempMod._source._phase>=(np.min(tempTable['time'])-tempMod.get('t0'))]
+            tempMod._source._phase=tempMod._source._phase[tempMod._source._phase<=(np.max(tempTable['time'])-tempMod.get('t0'))]
+            sncosmo.plot_lc(tempTable,model=tempMod,zp=tempTable['zp'][0],zpsys=tempTable['zpsys'][0])
+            #plt.savefig(nest_fit._source.name+'_'+tempTable['band'][0]+'_refs_'+d+'.pdf',format='pdf',overwrik4ite=True)
+            plt.show()
+            plt.clf()
+            plt.close()
 
     return curves
 
@@ -972,7 +1009,9 @@ def _fit_data(args):
         modName=mod+'_'+version if version else deepcopy(mod)
     else:
         modName=mod.name+'_'+version if version else deepcopy(mod)
+
     source=sncosmo.get_source(mod)
+
     #print(mod)
     smod = sncosmo.Model(source=source,effects=effects,effect_names=effect_names,effect_frames=effect_frames)
     params=args['params'] if args['params'] else [x for x in smod.param_names]
@@ -980,6 +1019,7 @@ def _fit_data(args):
     fits=newDict()
     dcurve=args['curve']
     if not np.any([smod.bandoverlap(band) for band in dcurve.bands]):
+        print('yep')
         raise RuntimeError("No band overlap for model %s"%modName)
     fits.method=args['method']
     fits.bounds=args['bounds'] if args['bounds'] else {}
@@ -988,6 +1028,7 @@ def _fit_data(args):
     fits.spline = args['spline']
     fits.poly = args['poly']
     fits.micro = args['micro']
+
     no_bound = {x for x in params if x in _needs_bounds and x not in fits.bounds.keys() and x not in fits.constants.keys()}
     if no_bound:
         params=list(set(params)-no_bound)
@@ -997,15 +1038,23 @@ def _fit_data(args):
         constants = {x: fits.constants[x] for x in fits.constants.keys() if x in smod.param_names}
         smod.set(**constants)
 
-    if args['method']=='mcmc':
-        fits.res, fits.model = args['sn_func'][args['method']](dcurve.table, smod, fits.params, fits.bounds, **args['props'])
-    elif args['method']=='nest':
-        fits.res, fits.model = args['sn_func'][args['method']](dcurve.table, smod, fits.params, fits.bounds,guess_amplitude_bound=True, verbose=False, **args['props'])
+    if args['doFit']:
+        if args['method']=='mcmc':
+            fits.res, fits.model = args['sn_func'][args['method']](dcurve.table, smod, fits.params, fits.bounds, **args['props'])
+        elif args['method']=='nest':
+            fits.res, fits.model = args['sn_func'][args['method']](dcurve.table, smod, fits.params, fits.bounds,guess_amplitude_bound=True, verbose=False, **args['props'])
+        else:
+            fits.res, fits.model = args['sn_func'][args['method']](dcurve.table, smod, fits.params, fits.bounds,verbose=False, **args['props'])
+        return(pyParz.parReturn(fits))
     else:
-        fits.res, fits.model = args['sn_func'][args['method']](dcurve.table, smod, fits.params, fits.bounds,verbose=False, **args['props'])
+
+        fits.model=smod
+        fits.res=newDict()
+        fits.res['vparam_names']=fits.params
+        return (fits)
 
 
-    return(pyParz.parReturn(fits))
+
 
 #def _tdMin(delay,time,curves):
 #    return(chisquare())
@@ -1024,11 +1073,15 @@ def _joint_likelihood(resList,verbose=False):
             print(param)
         probsList=[]
         weightsList=[]
+        zweights=[]
+        testList=[]
         for k in resList.keys():
             res=resList[k]
             pdf=_get_marginal_pdfs(res,nbins=100,verbose=False)
             if param in snparams:
-                weightsList=np.append(weightsList,pdf[param][1])
+                weightsList=np.append(weightsList,pdf[param][1]*(1/np.abs(pdf[param][4])))
+                testList=np.append(testList,pdf[param][1])
+                zweights=np.append(zweights,1/np.abs(pdf[param][4]))
                 probsList=np.append(probsList,pdf[param][0])
             elif param in otherParams:
                 if verbose:
@@ -1036,9 +1089,9 @@ def _joint_likelihood(resList,verbose=False):
                 outDict[param][k]=(pdf[param][2],pdf[param][3])
         if param in otherParams:
             continue
-        expectedValue=(weightsList*probsList).sum()
-        expectedValue/=len(resList)
-        std = np.sqrt( ((weightsList * (probsList-expectedValue)**2 ).sum())/4 )
+
+        expectedValue=((weightsList*probsList).sum())/(zweights.sum())
+        std = np.sqrt( ((weightsList * (probsList-expectedValue)**2 ).sum())/(zweights.sum()) )
         if verbose:
             print( '  <%s> = %.3e +- %.3e'%( param, expectedValue, std) )
 
@@ -1061,6 +1114,7 @@ def _get_marginal_pdfs( res, nbins=51, verbose=True ):
     vparam_names = res.vparam_names
     weights = res.weights
     samples = res.samples
+
     pdfdict = {}
 
     for param in vparam_names :
@@ -1089,7 +1143,8 @@ def _get_marginal_pdfs( res, nbins=51, verbose=True ):
         #print(weights)
         std = np.sqrt( (weights * (samples[:,ipar]-mean)**2 ).sum() )
 
-        pdfdict[param] = (parambins,pdf,mean,std)
+
+        pdfdict[param] = (parambins,pdf,mean,std,res.logz)
 
         if verbose :
             if np.abs(std)>=0.1:
@@ -1111,7 +1166,8 @@ def _get_marginal_pdfs( res, nbins=51, verbose=True ):
             mBbins = -2.5*np.log10(  parambins / x0_AB0 )
 
             pdfdict['mB'] = ( mBbins, pdf, mBmean, mBstd )
-            print( '  <%s> =  %.3f +- %.3f'%( 'mB', np.round(mBmean,3), np.round(mBstd,3)) )
+            if verbose:
+                print( '  <%s> =  %.3f +- %.3f'%( 'mB', np.round(mBmean,3), np.round(mBstd,3)) )
 
     return( pdfdict )
 

@@ -28,6 +28,27 @@ _COLORLIST15 = [
 _COLORLIST5 = np.array(_COLORLIST15).take([5,2,12,10,0]).tolist()
 
 
+#Color-blind friendly palette via
+# https://jacksonlab.agronomy.wisc.edu/2016/05/23/15-level-colorblind-friendly-palette/
+_COLORLIST15 = [
+    "#000000",# 0 black
+    "#004949",# 1 darkteal
+    "#009292",# 2 teal
+    "#ff6db6",# 3 darkpink
+    "#ffb6db",# 4 lightpink
+    "#490092",# 5 purple
+    "#006ddb",# 6 royalblue
+    "#b66dff",# 7 orchid
+    "#6db6ff",# 8 tarheelblue
+    "#b6dbff",# 9 skyblue
+    "#920000",#10 brickred
+    "#924900",#11 brown
+    "#db6d00",#12 darkorange
+    "#24ff24",#13 green
+    "#ffff6d",#14 yellow
+]
+_COLORLIST5 = np.array(_COLORLIST15).take([5,2,12,10,0]).tolist()
+
 def plotTimeDelays(lcs,fig=None,ax=None,band=None,color='b',filename='time_delays',offset=1,savefig=False,showfig=True):
     nrows=len(lcs.images.keys())-1
     ncols=nrows

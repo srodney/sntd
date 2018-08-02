@@ -82,7 +82,8 @@ def createMultiplyImagedSN(
         now=np.round(Time(datetime.datetime.now()).mjd,3)
         times=np.arange(now,now+cadence*epochs,cadence)
     else:
-        times=np.arange(mjdRange[0],mjdRange[-1],cadence)
+        #times=np.linspace(mjdRange[0],mjdRange[-1],epochs)
+        times=np.arange(mjdRange[0],min(mjdRange[0]+cadence*epochs,mjdRange[-1])+cadence,cadence)
     bandList=np.array([np.tile(b,len(times)) for b in bands]).flatten()
     ms=sncosmo.get_magsystem(zpsys)
 
@@ -93,11 +94,12 @@ def createMultiplyImagedSN(
     obj.zpDict = dict([(bandList[i], zpList[i]) for i in range(len(bandList))])
     obj.zpsys = zpsys
     obstable = Table({'time':np.tile(times,len(bands)), 'band':bandList,
-                      'zpsys':[zpsys for i in range(len(bandList))],
+                      'zpsys':[zpsys.upper() for i in range(len(bandList))],
                       'zp':zpList,
                       'skynoise':np.random.uniform(
                           skynoiseRange[0],skynoiseRange[1],len(bandList)),
                       'gain':[gain for i in range(len(bandList))]})
+    #print(ascii.write(obstable['band','time','gain','skynoise','zp','zpsys'],Writer=ascii.Latex,latexdict={'units':{'time':'Days','skynoise':'Counts'}}))
     absolutes=_getAbsoluteDist()
 
     # Set up the dust_model extinction effects in the host galaxy and lens plane
@@ -210,10 +212,18 @@ def createMultiplyImagedSN(
         # Generate the simulated SN light curve observations, make a `curve`
         # object, and store the simulation metadata
         model_i.set(**params_i)
+        #print(np.nanmin(model_i.bandmag('F125W',zpsys,np.arange(model_i.mintime(),model_i.maxtime(),1))))
         table_i = sncosmo.realize_lcs(
             obstable , model_i, [params_i],
-            trim_observations=True, scatter=scatter)[0]
+            trim_observations=True, scatter=scatter,thresh=minsnr)
+        while len(table_i)==0 or len(table_i[0])<numImages:
+            table_i = sncosmo.realize_lcs(
+                obstable , model_i, [params_i],
+                trim_observations=True, scatter=scatter,thresh=minsnr)
+        table_i=table_i[0]
         curve_i=curve(zp=zp,zpsys=zpsys)
+        curve_i.object=None
+
         curve_i.table=table_i
         curve_i.bands=list(set(table_i['band']))
         curve_i.simMeta=table_i.meta
