@@ -1,11 +1,11 @@
 #!/Users/jpierel/anaconda3/envs/astro2/bin python2
 
-import os,sncosmo
+import os,sncosmo,glob
+from astropy.io import ascii
 import numpy as np
 from collections import OrderedDict as odict
 from scipy.interpolate import splrep,splev
-from itertools import combinations
-import matplotlib.pyplot as plt
+from copy import copy
 
 
 __current_dir__=os.path.abspath(os.getcwd())
@@ -15,9 +15,8 @@ NORMAL = 0    # use python zip libraries
 PROCESS = 1   # use (zcat, gzip) or (bzcat, bzip2)
 PARALLEL = 2  # (pigz -dc, pigz) or (pbzip2 -dc, pbzip2)
 
-__all__=['flux_to_mag','_cast_str','_get_default_prop_name','_isfloat',
-         'anyOpen','_props','_findMax','_findMin','colorFit',
-         '_guess_time_delays', '_guess_magnifications']
+__all__=['flux_to_mag','_cast_str','_get_default_prop_name','_isfloat','anyOpen','_props','_findMax','_findMin',
+         '_guess_time_delays','_guess_magnifications','__dir__','load_example_data']
 _props=odict([
     ('time',{'mjd', 'mjdobs', 'jd', 'time', 'date', 'mjd_obs','mhjd','jds'}),
     ('band',{'filter', 'band', 'flt', 'bandpass'}),
@@ -30,15 +29,20 @@ _props=odict([
 ])
 
 
+def load_example_data():
+    example_files=glob.glob(os.path.join(__dir__,'data','examples','*.dat'))
+    return(ascii.read(example_files[0]),ascii.read(example_files[1]))
 
-
-def _guess_magnifications(curves):
+def _guess_magnifications(curves,referenceImage):
     """Guess t0 and amplitude of the model based on the data.
 
     Assumes the data has been standardized."""
     ref=None
     mags=dict([])
-    for k in curves.images.keys():
+    all_ims=[referenceImage]
+    for k in [x for x in curves.images.keys() if x!=referenceImage]:
+        all_ims.append(k)
+    for k in all_ims:
         if not curves.images[k].fits:
             bestRatio=-np.inf
             bestBand=None
@@ -50,163 +54,80 @@ def _guess_magnifications(curves):
             maxTime,maxValue=_findMax(curves.images[k].table['time'][curves.images[k].table['band']==b],curves.images[k].table['flux'][curves.images[k].table['band']==b])
 
 
-            if not ref:
-                ref=maxValue
+            if k==referenceImage:
+                ref=copy(maxValue)
             mags[k]=maxValue/ref
 
         else:
-            if 'x0' in curves.images[k].fits.res.param_names:
+            if 'x0' in curves.images[k].fits.res.vparam_names:
                 amplitude='x0'
             else:
                 amplitude='amplitude'
             mag=curves.images[k].fits.model.get(amplitude)
-            if not ref:
-                ref=mag
+            if k==referenceImage:
+                ref=copy(mag)
             mags[k]=mag/ref
     return mags
 
-def colorFit(lcs,verbose=True):
-    colors=combinations(lcs.bands,2)
 
-    allDelays=[]
-    for col in colors:
-
-        col=np.sort(col)
-        curves=dict([])
-        for d in np.sort(lcs.images.keys()):
-            print(d)
-            dcurve=lcs.images[d]
-            tempCurve1=dcurve.table[dcurve.table['band']==col[0]]
-            ind0=np.where(tempCurve1['flux']==np.max(tempCurve1['flux']))[0][0]
-            #ind0=np.where(dcurve.table['flux'][dcurve.table['band']==col[0]]==np.max(dcurve.table['flux'][dcurve.table['band']==col[0]]))[0][0]
-            ind0min=max(ind0-6,0)
-            ind0max=min(ind0+6,len(tempCurve1)-1)
-            tempCurve2=dcurve.table[dcurve.table['band']==col[1]]
-
-            ind1min=np.where(tempCurve2['time']>=tempCurve1['time'][ind0min])[0][0]
-            ind1max=np.where(tempCurve2['time']<=tempCurve1['time'][ind0max])[0][-1]
-            spl1=splrep(tempCurve1['time'][ind0min:ind0max+1],tempCurve1['flux'][ind0min:ind0max+1],s=len(tempCurve1),k=2)
-            spl2=splrep(tempCurve2['time'][ind1min:ind1max+1],tempCurve2['flux'][ind1min:ind1max+1],s=len(tempCurve2),k=2)
-            #time=np.linspace(max(np.min(dcurve.table['time'][dcurve.table['band']==col[0]][ind0min:ind0max+1]),np.min(dcurve.table['time'][dcurve.table['band']==col[1]][ind1min:ind1max+1])),
-            #                 min(np.max(dcurve.table['time'][dcurve.table['band']==col[0]][ind0min:ind0max+1]),np.max(dcurve.table['time'][dcurve.table['band']==col[1]][ind1min:ind1max+1])),500)
-            time=np.linspace(min(np.min(dcurve.table['time'][dcurve.table['band']==col[0]][ind0min:ind0max+1]),np.min(dcurve.table['time'][dcurve.table['band']==col[1]][ind1min:ind1max+1])),
-                                              max(np.max(dcurve.table['time'][dcurve.table['band']==col[0]][ind0min:ind0max+1]),np.max(dcurve.table['time'][dcurve.table['band']==col[1]][ind1min:ind1max+1])),500)
-            ccurve=splev(time,spl1)/splev(time,spl2)
-            figure=plt.figure()
-            ax=figure.gca()
-            ax.plot(time,splev(time,spl1))
-            ax.scatter(dcurve.table['time'][dcurve.table['band']==col[0]][ind0min:ind0max+1],dcurve.table['flux'][dcurve.table['band']==col[0]][ind0min:ind0max+1])
-            ax.plot(time,splev(time,spl2))
-            ax.scatter(dcurve.table['time'][dcurve.table['band']==col[1]][ind1min:ind1max+1],dcurve.table['flux'][dcurve.table['band']==col[1]][ind1min:ind1max+1])
-            #ax.plot(time,ccurve)
-            plt.show()
-            plt.close()
-            #curves.append(dcurve.table['flux'][dcurve.table['band']==col[0]]-dcurve.table['flux'][dcurve.table['band']==col[1]])
-            curves[d]=(time,ccurve)
-        ref=False
-
-
-        delays=dict([])
-        for k in np.sort(curves.keys()):
-            if k=='S1' or k=='S3':
-                continue
-            print(k)
-            time,curve=curves[k]
-            maxValue,flux=_findMax(time,curve)
-            print(maxValue)
-            minValue,flux=_findMin(time,curve)
-            if not minValue and not maxValue:
-                return(None)
-
-            if not ref:
-                ref=True
-                refMax=maxValue
-                refMin=minValue
-                refName=k
-                delays[k]=0
-
-            else:
-
-                #print(maxValue-refMax,minValue-refMin)
-                if refMax and maxValue:
-                    if refMin and minValue:
-                        delays[k]=np.mean([maxValue-refMax,minValue-refMin])
-                    else:
-                        delays[k]=maxValue-refMax
-                elif refMin and minValue:
-                    delays[k]=minValue-refMin
-                else:
-                    return(None)
-            print(delays[k])
-
-        allDelays.append(delays)
-    finalDelays=dict([])
-    for k in np.sort(allDelays[0].keys()):
-
-        est=np.mean([x[k] for x in allDelays])
-        est=est[0] if isinstance(est,list) else est
-        finalDelays[k]=est
-        #if verbose and lcs.images[k].simMeta:
-        #    print('True: '+str(lcs.images[k].simMeta['td']-lcs.images[refName].simMeta['td']),'Estimate: '+str(finalDelays[k]))
-    #for k in curves.keys():
-        #time,curve=curves[k]
-        #print(np.min(time-delays[k]-curves[refName][0]))
-        #ax.scatter(time,curve)
-        #ax.plot(time, curve, marker='o', ls='-')
-        #ax.scatter(time-finalDelays[k]-curves[refName][0],curve)
-    #plt.show()
-    return(finalDelays)
-
-def _guess_time_delays(curves):
-    tds=colorFit(curves)
-    if tds:
-        return tds
+def _guess_time_delays(curves,referenceImage):
+    #tds=colorFit(curves)
+    #if tds:
+    #    return tds
     ref=None
     tds=dict([])
-    for k in curves.images.keys():
+    all_ims=[referenceImage]
+    for k in [x for x in curves.images.keys() if x!=referenceImage]:
+        all_ims.append(k)
+    for k in all_ims:
         if not curves.images[k].fits:
             maxValue,maxFlux=_findMax(curves.images[k].table['time'],curves.images[k].table['flux'])
-            if not ref:
-                ref=maxValue
+            if k==referenceImage:
+                ref=copy(maxValue)
             tds[k]=maxValue-ref
         else:
             t0=curves.images[k].fits.model.get('t0')
-            if not ref:
-                ref=t0
+            if k==referenceImage:
+                ref=copy(t0)
             tds[k]=t0-ref
     return tds
 
 def _findMax(time,curve):
     #TODO check edge cases
-    imax=np.where(curve==np.max(curve))[0][0]
-    if imax==0:
-        return(time[0], curve[0])
-        # return (None,None)
-    elif imax==len(time)-1:
-        return(time[-1], curve[-1])
-        # return (None,None)
-    else:
-        fit=splrep(time[imax-1:imax+2],curve[imax-1:imax+2],k=2)
+    t0=np.where(curve==np.max(curve))[0][0]
+    if t0==0:
+        #return(time[0])
+        return (None,None)
 
-    interptime=np.linspace(time[imax-1],time[imax+1],100)
+    elif t0==len(time)-1:
+
+        #return(time[-1])
+        return (None,None)
+
+    else:
+        fit=splrep(time[t0-1:t0+2],curve[t0-1:t0+2],k=2)
+
+    interptime=np.linspace(time[t0-1],time[t0+1],100)
     flux=splev(interptime,fit)
     return(interptime[flux==np.max(flux)],np.max(flux))
 
 
 def _findMin(time,curve):
     #TODO check edge cases
-    imin=np.where(curve==np.min(curve))[0][0]
+    t0=np.where(curve==np.min(curve))[0][0]
 
-    if imin==0:
-        return(time[0], curve[0])
-        #return (None,None)
-    elif imin==len(time)-1:
-        return(time[-1], curve[-1])
-        #return (None,None)
+    if t0==0:
+        #return(time[0])
+        return (None,None)
+
+    elif t0==len(time)-1:
+        #return(time[-1])
+        return (None,None)
+
     else:
-        fit=splrep(time[imin-1:imin+2],curve[imin-1:imin+2],k=2)
+        fit=splrep(time[t0-1:t0+2],curve[t0-1:t0+2],k=2)
 
-    interptime=np.linspace(time[imin-1],time[imin+1],100)
+    interptime=np.linspace(time[t0-1],time[t0+1],100)
     flux=splev(interptime,fit)
     return(interptime[flux==np.min(flux)],np.max(flux))
 
@@ -246,13 +167,6 @@ def _get_default_prop_name(prop):
         if {prop.lower()} & value:
             return key
     return prop
-
-
-def standardize_table_colnames(table):
-    for col in table.colnames:
-        if col != _get_default_prop_name(col.lower()):
-            table.rename_column(col, _get_default_prop_name(col.lower()))
-    return table
 
 
 def _isfloat(value):
@@ -336,20 +250,3 @@ def which(program):
                 return exe_file
 
     return None
-
-def ismicrolensing(sncosmo_effect):
-    """Check if the given sncosmo PropagationEffect is one of the microlensing
-    effects (AchromaticSplineMicrolensing, ChromaticSplineMicrolensing,
-    ChromaticMicrolensing)
-    """
-    if isinstance(sncosmo_effect, sncosmo.models.AchromaticMicrolensing):
-        return True
-    if isinstance(sncosmo_effect, sncosmo.models.ChromaticSplineMicrolensing):
-        return True
-    if isinstance(sncosmo_effect, sncosmo.models.AchromaticSplineMicrolensing):
-        return True
-    if not isinstance(sncosmo_effect, sncosmo.models.PropagationEffect):
-        print("WARNING: %s is not an sncosmo PropagationEffect"%\
-              str(sncosmo_effect))
-        return False
-    return False

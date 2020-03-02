@@ -1,33 +1,72 @@
 # Compiled files
-*.py[cod]
-*.a
-*.o
-*.so
-__pycache__
+*.py[co]
 
 # Ignore .c files by default to avoid including generated code. If you want to
 # add a non-generated .c extension, use `git add -f filename.c`.
 *.c
+*.so
 
-# Other generated files
-*/version.py
-*/cython_version.py
+# Packages
+*.egg
+*.egg-info
+dist
+build
+.eggs
+parts
+bin
+var
+sdist
+develop-eggs
+.installed.cfg
+
+# Installer logs
+pip-log.txt
+
+# Unit test / coverage reports
 htmlcov
 .coverage
-MANIFEST
-.ipynb_checkpoints
+.tox
 
-# Sphinx
-docs/api
+#Translations
+*.mo
+
+#Mr Developer
+.mr.developer.cfg
+
+#  Documentation
 docs/_build
+docs/api
+docs/examples
+docs/modules
 
-# Eclipse editor project files
-.project
-.pydevproject
-.settings
+# Other generated files
+MANIFEST
 
-# Pycharm editor project files
+# editors
+*~
+.vscode
+
+# pycharm files
 .idea
+
+# ipython notebooks
+*.ipynb
+
+# misc helpers
+misc/Make.user
+misc/*.o
+misc/*.d
+misc/test-salt2model
+
+# testing
+.cache
+.pytest_cache
+
+
+venv
+
+main.py
+
 *~
 \#*\#
 commit.txt
@@ -35,34 +74,16 @@ commit.txt
 # executables
 *.e
 
-# Packages/installer info
-*.egg
-*.egg-info
-dist
-build
-eggs
-parts
-bin
-var
-sdist
-develop-eggs
-.installed.cfg
-distribute-*.tar.gz
-
-# Other
-.cache
-.tox
-.*.sw[op]
-*~
-.project
-.pydevproject
-.settings
+# C extensions
+*.so
 
 # Installer logs
 pip-log.txt
 
-# Mac OSX
-.DS_Store
-
 #figs
 *.pdf
+
+sntd/*.pyc
+
+*.eggs
+*.egg-info
